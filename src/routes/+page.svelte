@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { ApiPromise, WsProvider } from '@polkadot/api';
 	import { AppBar } from '@skeletonlabs/skeleton-svelte';
+	import type { Helia } from 'helia';
 
 	const ENDPOINT = 'ws://127.0.0.1:9944';
 
@@ -12,10 +13,17 @@
 	let latestBlockNumber = $state<string>('');
 	let api = $state<ApiPromise | null>(null);
 
+	let ipfsStatus = $state('Starting browser IPFS node...');
+	let ipfsPeerId = $state('');
+	let ipfsMultiaddrs = $state<string[]>([]);
+	let ipfsConnections = $state(0);
+	let heliaNode = $state<Helia | null>(null);
+
 	onMount(() => {
 		let active = true;
 		let unsubscribeNewHeads: (() => void) | undefined;
 		let connectedApi: ApiPromise | null = null;
+		let ipfsConnectionInterval: ReturnType<typeof setInterval> | undefined;
 
 		void (async () => {
 			try {
@@ -50,10 +58,38 @@
 			}
 		})();
 
+		void (async () => {
+			try {
+				const { createHelia } = await import('helia');
+				const node = await createHelia();
+
+				if (!active) {
+					await node.stop();
+					return;
+				}
+
+				heliaNode = node;
+				ipfsPeerId = node.libp2p.peerId.toString();
+				ipfsMultiaddrs = node.libp2p.getMultiaddrs().map((addr) => addr.toString());
+				ipfsConnections = node.libp2p.getConnections().length;
+				ipfsStatus = 'Running in browser';
+
+				ipfsConnectionInterval = setInterval(() => {
+					if (!active || heliaNode == null) return;
+					ipfsConnections = heliaNode.libp2p.getConnections().length;
+					ipfsMultiaddrs = heliaNode.libp2p.getMultiaddrs().map((addr) => addr.toString());
+				}, 2_000);
+			} catch (error) {
+				ipfsStatus = `IPFS start failed: ${error instanceof Error ? error.message : String(error)}`;
+			}
+		})();
+
 		return () => {
 			active = false;
 			unsubscribeNewHeads?.();
+			if (ipfsConnectionInterval) clearInterval(ipfsConnectionInterval);
 			void connectedApi?.disconnect();
+			void heliaNode?.stop();
 		};
 	});
 </script>
@@ -83,6 +119,27 @@
 				{/if}
 				{#if latestBlockNumber}
 					<p><span class="font-medium">Latest block:</span> #{latestBlockNumber}</p>
+				{/if}
+			</div>
+		</div>
+
+		<div class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-4">
+			<h2 class="mb-3 text-base font-medium">Browser IPFS node</h2>
+			<div class="space-y-2 text-sm">
+				<p><span class="font-medium">Status:</span> {ipfsStatus}</p>
+				{#if ipfsPeerId}
+					<p><span class="font-medium">Peer ID:</span> {ipfsPeerId}</p>
+				{/if}
+				<p><span class="font-medium">Active connections:</span> {ipfsConnections}</p>
+				{#if ipfsMultiaddrs.length > 0}
+					<div>
+						<p class="mb-2 font-medium">Listen addresses:</p>
+						<ul class="list-disc space-y-1 pl-5 break-all">
+							{#each ipfsMultiaddrs as addr}
+								<li>{addr}</li>
+							{/each}
+						</ul>
+					</div>
 				{/if}
 			</div>
 		</div>

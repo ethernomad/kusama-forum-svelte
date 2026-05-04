@@ -46,6 +46,7 @@
 		"vitest-browser-svelte": "^2.1.0"
 	},
 	"dependencies": {
-		"@polkadot/api": "^16.5.6"
+		"@polkadot/api": "^16.5.6",
+		"helia": "^6.1.4"
 	}
 }
