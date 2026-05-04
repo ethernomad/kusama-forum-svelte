@@ -9,7 +9,14 @@
 	} from '$lib/services/accounts.svelte';
 	import { getAccountBalanceLabel } from '$lib/services/balances.svelte';
 	import { connections } from '$lib/services/connections.svelte';
-	import { loadProfile, saveProfile, shortHex, type LoadedProfile, type ProfileDraft } from '$lib/services/profile';
+	import {
+		loadProfileContent,
+		loadProfileMetadata,
+		saveProfile,
+		shortHex,
+		type LoadedProfile,
+		type ProfileDraft
+	} from '$lib/services/profile';
 
 	const isConnected = (status: string) => status === 'Connected' || status === 'Running in browser';
 
@@ -40,6 +47,7 @@
 	let profileError = $state('');
 	let profileNotice = $state('');
 	let refreshTick = $state(0);
+	let profileLoadRequest = 0;
 
 	const activeAccount = $derived(injectedAccounts.activeAccount);
 	const activeAddress = $derived(activeAccount?.address ?? '');
@@ -68,23 +76,43 @@
 			return;
 		}
 
+		const requestId = ++profileLoadRequest;
 		loadingProfile = true;
 		try {
-			const loaded = await loadProfile(connections.api, connections.heliaNode, activeAddress);
-			applyProfile(loaded);
-			if (!loaded.exists) {
+			const metadata = await loadProfileMetadata(connections.api, activeAddress);
+			if (requestId !== profileLoadRequest) return;
+			applyProfile(metadata);
+			if (!metadata.exists) {
 				profileNotice = 'No profile exists yet for this account.';
-			} else if (!loaded.contentLoaded) {
-				profileNotice = 'Loaded on-chain profile metadata, but the revision content could not be fetched from IPFS.';
-				profileError = loaded.contentError ?? '';
-			} else {
-				profileNotice = 'Loaded the latest indexed profile revision.';
+				return;
 			}
+
+			profileNotice = 'Loaded on-chain profile metadata. Refreshing indexed/IPFS content in the background...';
+			void loadProfileContent(connections.heliaNode, metadata)
+				.then((loaded) => {
+					if (requestId !== profileLoadRequest) return;
+					applyProfile(loaded);
+					if (!loaded.contentLoaded) {
+						profileNotice = 'Loaded on-chain profile metadata, but the revision content could not be fetched from IPFS.';
+						profileError = loaded.contentError ?? '';
+					} else {
+						profileNotice = 'Loaded the latest indexed profile revision.';
+					}
+				})
+				.catch((error) => {
+					if (requestId !== profileLoadRequest) return;
+					profileNotice = 'Loaded on-chain profile metadata, but the revision content could not be fetched from IPFS.';
+					profileError = error instanceof Error ? error.message : String(error);
+				})
+				.finally(() => {
+					if (requestId !== profileLoadRequest) return;
+					loadingProfile = false;
+				});
 		} catch (error) {
+			if (requestId !== profileLoadRequest) return;
 			profile = null;
 			existingImagePayload = null;
 			profileError = error instanceof Error ? error.message : String(error);
-		} finally {
 			loadingProfile = false;
 		}
 	}
@@ -281,7 +309,7 @@
 						This matches the Acuity profile flow: publish a profile item, store the protobuf payload on IPFS, and update future edits as item revisions.
 					</p>
 				</div>
-				<button class="variant-outline btn" onclick={() => (refreshTick += 1)} disabled={loadingProfile || savingProfile}>
+				<button class="variant-outline btn" onclick={() => (refreshTick += 1)} disabled={savingProfile}>
 					Refresh
 				</button>
 			</header>
@@ -297,7 +325,7 @@
 					<div class="space-y-4">
 						<label class="block space-y-2 text-sm">
 							<span class="font-medium">Name</span>
-							<input class="w-full rounded-lg border-surface-200-800 bg-surface-100-900" bind:value={draft.name} placeholder="Jonathan Brown" disabled={!activeAccount || loadingProfile || savingProfile} />
+							<input class="w-full rounded-lg border-surface-200-800 bg-surface-100-900" bind:value={draft.name} placeholder="Jonathan Brown" disabled={!activeAccount || savingProfile} />
 						</label>
 
 						<label class="block space-y-2 text-sm">
@@ -306,7 +334,7 @@
 								class="w-full rounded-lg border-surface-200-800 bg-surface-100-900"
 								value={String(draft.accountType)}
 								onchange={(event) => (draft.accountType = Number((event.currentTarget as HTMLSelectElement).value))}
-								disabled={!activeAccount || loadingProfile || savingProfile}
+								disabled={!activeAccount || savingProfile}
 							>
 								{#each accountTypeOptions as option}
 									<option value={option.value}>{option.label}</option>
@@ -316,22 +344,22 @@
 
 						<label class="block space-y-2 text-sm">
 							<span class="font-medium">Location</span>
-							<input class="w-full rounded-lg border-surface-200-800 bg-surface-100-900" bind:value={draft.location} placeholder="York, England" disabled={!activeAccount || loadingProfile || savingProfile} />
+							<input class="w-full rounded-lg border-surface-200-800 bg-surface-100-900" bind:value={draft.location} placeholder="York, England" disabled={!activeAccount || savingProfile} />
 						</label>
 
 						<label class="block space-y-2 text-sm">
 							<span class="font-medium">Bio</span>
-							<textarea class="min-h-40 w-full rounded-lg border-surface-200-800 bg-surface-100-900" bind:value={draft.bio} placeholder="Describe the person, project, or organization behind this account." disabled={!activeAccount || loadingProfile || savingProfile}></textarea>
+							<textarea class="min-h-40 w-full rounded-lg border-surface-200-800 bg-surface-100-900" bind:value={draft.bio} placeholder="Describe the person, project, or organization behind this account." disabled={!activeAccount || savingProfile}></textarea>
 						</label>
 
 						<label class="block space-y-2 text-sm">
 							<span class="font-medium">Avatar image</span>
-							<input class="block w-full text-sm" type="file" accept="image/*" onchange={handleImageChange} disabled={!activeAccount || loadingProfile || savingProfile} />
+							<input class="block w-full text-sm" type="file" accept="image/*" onchange={handleImageChange} disabled={!activeAccount || savingProfile} />
 							<p class="text-surface-700-300 text-xs">Images are re-encoded to JPEG and uploaded to IPFS as mipmap levels, matching the Dioxus app.</p>
 						</label>
 
 						<div class="flex flex-wrap gap-3">
-							<button class="btn variant-filled-primary" onclick={submitProfile} disabled={!activeAccount || !connections.api || !connections.heliaNode || loadingProfile || savingProfile}>
+							<button class="btn variant-filled-primary" onclick={submitProfile} disabled={!activeAccount || !connections.api || !connections.heliaNode || savingProfile}>
 								{#if savingProfile}Saving...{:else if profile?.exists}Save profile{:else}Create profile{/if}
 							</button>
 							<button
@@ -339,7 +367,7 @@
 								onclick={() => {
 									if (profile) applyProfile(profile);
 								}}
-								disabled={!profile || loadingProfile || savingProfile}
+								disabled={!profile || savingProfile}
 							>
 								Reset
 							</button>
@@ -373,10 +401,11 @@
 				<h2 class="mb-3 text-base font-medium">Current profile</h2>
 				{#if !activeAccount}
 					<p class="text-surface-700-300 text-sm">Select an account to view or edit its profile.</p>
-				{:else if loadingProfile}
-					<p class="text-surface-700-300 text-sm">Loading profile from the indexer and IPFS...</p>
 				{:else}
 					<div class="space-y-3 text-sm">
+						{#if loadingProfile}
+							<p class="text-surface-700-300 text-xs">Refreshing indexed/IPFS content in the background...</p>
+						{/if}
 						<div>
 							<p class="text-surface-700-300 text-xs uppercase">Account</p>
 							<p class="mt-1 font-medium">{formatAccountLabel(activeAccount)}</p>

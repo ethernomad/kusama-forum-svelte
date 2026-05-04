@@ -391,7 +391,7 @@ async function uploadIpfsDigest(heliaNode: Helia, bytes: Uint8Array): Promise<st
 async function fetchIpfsBytesByCid(heliaNode: Helia, cid: CID): Promise<Bytes> {
 	const fs = unixfs(heliaNode);
 	const chunks: Uint8Array[] = [];
-	for await (const chunk of fs.cat(cid, { offline: true })) {
+	for await (const chunk of fs.cat(cid)) {
 		chunks.push(u8a(chunk));
 	}
 	return concatBytes(...chunks);
@@ -583,16 +583,30 @@ function normalizeItemId(storageValue: unknown): Bytes | null {
 	return null;
 }
 
-export async function loadProfile(api: ApiPromise, heliaNode: Helia, address: string): Promise<LoadedProfile> {
+export async function loadProfileMetadata(api: ApiPromise, address: string): Promise<LoadedProfile> {
 	const storageValue = await (api.query as Record<string, Record<string, (...args: unknown[]) => Promise<unknown>>>).accountProfile.accountProfile(address);
 	const itemId = normalizeItemId(storageValue);
 	if (!itemId) return createEmptyProfile();
 
 	const itemIdHex = toHex(itemId);
 	const revisionIpfsHashHex = await fetchLatestRevisionHash(itemIdHex);
+	return {
+		exists: true,
+		itemIdHex,
+		revisionIpfsHashHex,
+		draft: createDefaultDraft(),
+		imagePreviewDataUrl: null,
+		existingImagePayload: null,
+		contentLoaded: false,
+		contentError: null
+	};
+}
+
+export async function loadProfileContent(heliaNode: Helia, profile: LoadedProfile): Promise<LoadedProfile> {
+	if (!profile.exists || !profile.itemIdHex || !profile.revisionIpfsHashHex) return profile;
 
 	try {
-		const itemBytes = await fetchIpfsDigestBytes(heliaNode, revisionIpfsHashHex);
+		const itemBytes = await fetchIpfsDigestBytes(heliaNode, profile.revisionIpfsHashHex);
 		const item = decodeItemMessage(itemBytes);
 		const titlePayload = findMixin(item, TITLE_MIXIN_ID);
 		const bodyPayload = findMixin(item, BODY_TEXT_MIXIN_ID);
@@ -601,17 +615,15 @@ export async function loadProfile(api: ApiPromise, heliaNode: Helia, address: st
 
 		const title = titlePayload ? decodeTitleMixin(titlePayload).title : '';
 		const bodyText = bodyPayload ? decodeBodyTextMixin(bodyPayload).bodyText : '';
-		const profile = profilePayload ? decodeProfileMixin(profilePayload) : { accountType: 0, location: '' };
+		const decodedProfile = profilePayload ? decodeProfileMixin(profilePayload) : { accountType: 0, location: '' };
 
 		return {
-			exists: true,
-			itemIdHex,
-			revisionIpfsHashHex,
+			...profile,
 			draft: {
 				name: title,
 				bio: bodyText,
-				location: profile.location,
-				accountType: profile.accountType
+				location: decodedProfile.location,
+				accountType: decodedProfile.accountType
 			},
 			imagePreviewDataUrl: imagePayload ? await previewDataUrlForImageMixin(heliaNode, imagePayload) : null,
 			existingImagePayload: imagePayload,
@@ -620,16 +632,16 @@ export async function loadProfile(api: ApiPromise, heliaNode: Helia, address: st
 		};
 	} catch (error) {
 		return {
-			exists: true,
-			itemIdHex,
-			revisionIpfsHashHex,
-			draft: createDefaultDraft(),
-			imagePreviewDataUrl: null,
-			existingImagePayload: null,
+			...profile,
 			contentLoaded: false,
 			contentError: error instanceof Error ? error.message : String(error)
 		};
 	}
+}
+
+export async function loadProfile(api: ApiPromise, heliaNode: Helia, address: string): Promise<LoadedProfile> {
+	const metadata = await loadProfileMetadata(api, address);
+	return await loadProfileContent(heliaNode, metadata);
 }
 
 async function signAndFinalize(extrinsic: { signAndSend: Function }, account: InjectedAccount): Promise<void> {

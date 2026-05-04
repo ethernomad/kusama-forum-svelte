@@ -1,5 +1,10 @@
 import { ApiPromise, WsProvider } from '@polkadot/api';
 import type { Helia } from 'helia';
+
+type GlobalHeliaState = typeof globalThis & {
+	__kusamaForumHeliaNode?: Helia | null;
+	__kusamaForumHeliaNodePromise?: Promise<Helia> | null;
+};
 import {
 	configureIndexerConnectionState,
 	ensureStarted as startIndexer,
@@ -57,6 +62,25 @@ export const connections = $state<ConnectionsState>({
 
 let started = false;
 let stopConnections: (() => void) | null = null;
+
+async function getOrCreateHeliaNode(): Promise<Helia> {
+	const globalState = globalThis as GlobalHeliaState;
+	if (globalState.__kusamaForumHeliaNode) return globalState.__kusamaForumHeliaNode;
+	if (globalState.__kusamaForumHeliaNodePromise) return await globalState.__kusamaForumHeliaNodePromise;
+
+	globalState.__kusamaForumHeliaNodePromise = (async () => {
+		const { createHelia } = await import('helia');
+		const node = await createHelia();
+		globalState.__kusamaForumHeliaNode = node;
+		return node;
+	})();
+
+	try {
+		return await globalState.__kusamaForumHeliaNodePromise;
+	} finally {
+		globalState.__kusamaForumHeliaNodePromise = null;
+	}
+}
 
 const updateIndexerSpans = (spans: IndexSpan[]) => {
 	connections.indexerSpans = spans;
@@ -137,12 +161,10 @@ export function startAppConnections() {
 
 	void (async () => {
 		try {
-			const { createHelia } = await import('helia');
-			const node = await createHelia();
+			const node = await getOrCreateHeliaNode();
 			heliaNode = node;
 
 			if (!active) {
-				await node.stop();
 				return;
 			}
 
@@ -169,7 +191,6 @@ export function startAppConnections() {
 		configureIndexerConnectionState(null);
 		if (ipfsConnectionInterval) clearInterval(ipfsConnectionInterval);
 		void connectedApi?.disconnect();
-		if (heliaNode) void heliaNode.stop();
 		started = false;
 		stopConnections = null;
 	};
