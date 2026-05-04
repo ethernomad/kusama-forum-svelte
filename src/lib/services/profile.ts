@@ -38,6 +38,8 @@ export type LoadedProfile = {
 	draft: ProfileDraft;
 	imagePreviewDataUrl: string | null;
 	existingImagePayload: Bytes | null;
+	contentLoaded: boolean;
+	contentError: string | null;
 };
 
 export type SaveProfileResult = LoadedProfile;
@@ -82,7 +84,9 @@ function createEmptyProfile(): LoadedProfile {
 		revisionIpfsHashHex: null,
 		draft: createDefaultDraft(),
 		imagePreviewDataUrl: null,
-		existingImagePayload: null
+		existingImagePayload: null,
+		contentLoaded: false,
+		contentError: null
 	};
 }
 
@@ -586,30 +590,46 @@ export async function loadProfile(api: ApiPromise, heliaNode: Helia, address: st
 
 	const itemIdHex = toHex(itemId);
 	const revisionIpfsHashHex = await fetchLatestRevisionHash(itemIdHex);
-	const itemBytes = await fetchIpfsDigestBytes(heliaNode, revisionIpfsHashHex);
-	const item = decodeItemMessage(itemBytes);
-	const titlePayload = findMixin(item, TITLE_MIXIN_ID);
-	const bodyPayload = findMixin(item, BODY_TEXT_MIXIN_ID);
-	const profilePayload = findMixin(item, PROFILE_MIXIN_ID);
-	const imagePayload = findMixin(item, IMAGE_MIXIN_ID);
 
-	const title = titlePayload ? decodeTitleMixin(titlePayload).title : '';
-	const bodyText = bodyPayload ? decodeBodyTextMixin(bodyPayload).bodyText : '';
-	const profile = profilePayload ? decodeProfileMixin(profilePayload) : { accountType: 0, location: '' };
+	try {
+		const itemBytes = await fetchIpfsDigestBytes(heliaNode, revisionIpfsHashHex);
+		const item = decodeItemMessage(itemBytes);
+		const titlePayload = findMixin(item, TITLE_MIXIN_ID);
+		const bodyPayload = findMixin(item, BODY_TEXT_MIXIN_ID);
+		const profilePayload = findMixin(item, PROFILE_MIXIN_ID);
+		const imagePayload = findMixin(item, IMAGE_MIXIN_ID);
 
-	return {
-		exists: true,
-		itemIdHex,
-		revisionIpfsHashHex,
-		draft: {
-			name: title,
-			bio: bodyText,
-			location: profile.location,
-			accountType: profile.accountType
-		},
-		imagePreviewDataUrl: imagePayload ? await previewDataUrlForImageMixin(heliaNode, imagePayload) : null,
-		existingImagePayload: imagePayload
-	};
+		const title = titlePayload ? decodeTitleMixin(titlePayload).title : '';
+		const bodyText = bodyPayload ? decodeBodyTextMixin(bodyPayload).bodyText : '';
+		const profile = profilePayload ? decodeProfileMixin(profilePayload) : { accountType: 0, location: '' };
+
+		return {
+			exists: true,
+			itemIdHex,
+			revisionIpfsHashHex,
+			draft: {
+				name: title,
+				bio: bodyText,
+				location: profile.location,
+				accountType: profile.accountType
+			},
+			imagePreviewDataUrl: imagePayload ? await previewDataUrlForImageMixin(heliaNode, imagePayload) : null,
+			existingImagePayload: imagePayload,
+			contentLoaded: true,
+			contentError: null
+		};
+	} catch (error) {
+		return {
+			exists: true,
+			itemIdHex,
+			revisionIpfsHashHex,
+			draft: createDefaultDraft(),
+			imagePreviewDataUrl: null,
+			existingImagePayload: null,
+			contentLoaded: false,
+			contentError: error instanceof Error ? error.message : String(error)
+		};
+	}
 }
 
 async function signAndFinalize(extrinsic: { signAndSend: Function }, account: InjectedAccount): Promise<void> {
@@ -670,7 +690,9 @@ export async function saveProfile(params: {
 			revisionIpfsHashHex,
 			draft,
 			imagePreviewDataUrl: builtImage?.previewDataUrl ?? (imagePayload ? await previewDataUrlForImageMixin(heliaNode, imagePayload) : null),
-			existingImagePayload: imagePayload
+			existingImagePayload: imagePayload,
+			contentLoaded: true,
+			contentError: null
 		};
 	}
 
@@ -697,6 +719,8 @@ export async function saveProfile(params: {
 		revisionIpfsHashHex,
 		draft,
 		imagePreviewDataUrl: builtImage?.previewDataUrl ?? (imagePayload ? await previewDataUrlForImageMixin(heliaNode, imagePayload) : null),
-		existingImagePayload: imagePayload
+		existingImagePayload: imagePayload,
+		contentLoaded: true,
+		contentError: null
 	};
 }

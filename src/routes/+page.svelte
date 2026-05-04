@@ -72,7 +72,14 @@
 		try {
 			const loaded = await loadProfile(connections.api, connections.heliaNode, activeAddress);
 			applyProfile(loaded);
-			profileNotice = loaded.exists ? 'Loaded the latest indexed profile revision.' : 'No profile exists yet for this account.';
+			if (!loaded.exists) {
+				profileNotice = 'No profile exists yet for this account.';
+			} else if (!loaded.contentLoaded) {
+				profileNotice = 'Loaded on-chain profile metadata, but the revision content could not be fetched from IPFS.';
+				profileError = loaded.contentError ?? '';
+			} else {
+				profileNotice = 'Loaded the latest indexed profile revision.';
+			}
 		} catch (error) {
 			profile = null;
 			existingImagePayload = null;
@@ -385,7 +392,15 @@
 						</div>
 						<div>
 							<p class="text-surface-700-300 text-xs uppercase">State</p>
-							<p class="mt-1">{profile?.exists ? 'Published' : 'Not created yet'}</p>
+							<p class="mt-1">
+								{#if !profile?.exists}
+									Not created yet
+								{:else if profile.contentLoaded}
+									Published
+								{:else}
+									Published (content unavailable)
+								{/if}
+							</p>
 						</div>
 					</div>
 				{/if}
