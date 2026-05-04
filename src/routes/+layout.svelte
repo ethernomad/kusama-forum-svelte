@@ -3,13 +3,21 @@
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import { loadInjectedAccounts } from '$lib/services/accounts.svelte';
+	import { startAccountBalanceWatcher } from '$lib/services/balances.svelte';
 	import { startAppConnections } from '$lib/services/connections.svelte';
+	import { stopIndexer } from '$lib/services/indexer.svelte';
 
 	let { children } = $props();
 
 	onMount(() => {
 		loadInjectedAccounts();
-		return startAppConnections();
+		const stopConnections = startAppConnections();
+		const stopBalanceWatcher = startAccountBalanceWatcher();
+		return () => {
+			stopBalanceWatcher();
+			stopConnections();
+			stopIndexer();
+		};
 	});
 </script>
 

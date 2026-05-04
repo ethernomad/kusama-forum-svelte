@@ -11,8 +11,7 @@ type ProtoReader = InstanceType<typeof Reader>;
 type ProtoWriter = InstanceType<typeof Writer>;
 
 import type { InjectedAccount } from './accounts.svelte';
-
-const INDEXER_ENDPOINT = 'ws://127.0.0.1:8172';
+import { getIndexedEvents } from './indexer.svelte';
 const PROFILE_ITEM_FLAGS = 0x01;
 const PROFILE_MIXIN_ID = 0xbeef2144;
 const LANGUAGE_MIXIN_ID = 0x9bc7a0e6;
@@ -486,54 +485,8 @@ function encodeProfileItem(draft: ProfileDraft, imagePayload: Bytes | null): Byt
 	return encodeItemMessage(item);
 }
 
-async function indexerRequest<T>(messageType: string, payload: Record<string, unknown>): Promise<T> {
-	const socket = new WebSocket(INDEXER_ENDPOINT);
-	const requestId = Date.now();
-
-	return new Promise<T>((resolve, reject) => {
-		const cleanup = () => {
-			socket.onopen = null;
-			socket.onmessage = null;
-			socket.onerror = null;
-			socket.onclose = null;
-			if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
-				socket.close();
-			}
-		};
-
-		socket.onerror = () => {
-			cleanup();
-			reject(new Error('Failed to connect to the indexer.'));
-		};
-
-		socket.onclose = () => {
-			cleanup();
-		};
-
-		socket.onopen = () => {
-			socket.send(JSON.stringify({ id: requestId, type: messageType, ...payload }));
-		};
-
-		socket.onmessage = (event) => {
-			try {
-				const message = JSON.parse(String(event.data)) as {
-					id?: number;
-					type?: string;
-					data?: T;
-				};
-				if (message.id !== requestId) return;
-				if (message.type === 'error') {
-					throw new Error((message.data as { message?: string } | undefined)?.message ?? 'Indexer request failed.');
-				}
-				if (!message.data) throw new Error('Indexer returned no data.');
-				cleanup();
-				resolve(message.data);
-			} catch (error) {
-				cleanup();
-				reject(error instanceof Error ? error : new Error(String(error)));
-			}
-		};
-	});
+async function indexerRequest<T>(_method: string, payload: Record<string, unknown>): Promise<T> {
+	return await getIndexedEvents<T>(payload);
 }
 
 type DecodedEvent = {
@@ -545,7 +498,7 @@ type DecodedEvent = {
 };
 
 async function fetchLatestRevisionHash(itemIdHex: string): Promise<string> {
-	const response = await indexerRequest<{ decodedEvents?: DecodedEvent[] }>('GetEvents', {
+	const response = await indexerRequest<{ decodedEvents?: DecodedEvent[] }>('acuity_getEvents', {
 		key: {
 			type: 'Custom',
 			value: {
@@ -576,16 +529,52 @@ async function fetchLatestRevisionHash(itemIdHex: string): Promise<string> {
 
 function normalizeItemId(storageValue: unknown): Bytes | null {
 	if (!storageValue) return null;
-	if (storageValue instanceof Uint8Array) return storageValue;
-	if (Array.isArray(storageValue)) return new Uint8Array(storageValue);
-	if (typeof storageValue === 'string') return hexToBytes(storageValue);
+	if (storageValue instanceof Uint8Array) return storageValue.length === 32 ? storageValue : null;
+	if (Array.isArray(storageValue)) {
+		const bytes = new Uint8Array(storageValue);
+		return bytes.length === 32 ? bytes : null;
+	}
+	if (typeof storageValue === 'string') {
+		const bytes = hexToBytes(storageValue);
+		return bytes.length === 32 ? bytes : null;
+	}
 	if (typeof storageValue === 'object' && storageValue !== null) {
-		const candidate = (storageValue as { toHex?: () => string; toU8a?: () => Uint8Array }).toU8a?.();
-		if (candidate) return candidate;
-		const hex = (storageValue as { toHex?: () => string }).toHex?.();
-		if (hex) return hexToBytes(hex);
-		const inner = (storageValue as { valueOf?: () => unknown }).valueOf?.();
-		if (typeof inner === 'string') return hexToBytes(inner);
+		const optionLike = storageValue as {
+			isSome?: boolean;
+			isNone?: boolean;
+			unwrap?: () => unknown;
+			toPrimitive?: () => unknown;
+			toJSON?: () => unknown;
+			toHex?: () => string;
+			toU8a?: () => Uint8Array;
+			valueOf?: () => unknown;
+		};
+		if (optionLike.isNone) return null;
+		if (optionLike.isSome && optionLike.unwrap) {
+			return normalizeItemId(optionLike.unwrap());
+		}
+		const primitive = optionLike.toPrimitive?.();
+		if (primitive != null && primitive !== storageValue) {
+			const normalized = normalizeItemId(primitive);
+			if (normalized) return normalized;
+		}
+		const json = optionLike.toJSON?.();
+		if (json != null && json !== storageValue) {
+			const normalized = normalizeItemId(json);
+			if (normalized) return normalized;
+		}
+		const hex = optionLike.toHex?.();
+		if (hex) {
+			const bytes = hexToBytes(hex);
+			if (bytes.length === 32) return bytes;
+		}
+		const u8a = optionLike.toU8a?.();
+		if (u8a && u8a.length === 32) return u8a;
+		const inner = optionLike.valueOf?.();
+		if (inner != null && inner !== storageValue) {
+			const normalized = normalizeItemId(inner);
+			if (normalized) return normalized;
+		}
 	}
 	return null;
 }

@@ -1,10 +1,15 @@
 import { ApiPromise, WsProvider } from '@polkadot/api';
 import type { Helia } from 'helia';
+import {
+	configureIndexerConnectionState,
+	ensureStarted as startIndexer,
+	indexStatus,
+	subscribeIndexerStatus,
+	type IndexSpan
+} from './indexer.svelte';
 
 const ENDPOINT = 'ws://127.0.0.1:9944';
 const INDEXER_ENDPOINT = 'ws://127.0.0.1:8172';
-
-type IndexSpan = { start: number; end: number };
 
 type ConnectionsState = {
 	endpoint: string;
@@ -70,10 +75,7 @@ export function startAppConnections() {
 	let active = true;
 	let unsubscribeNewHeads: (() => void) | undefined;
 	let connectedApi: ApiPromise | null = null;
-	let indexerSocket: WebSocket | null = null;
-	let indexerRequestId = 0;
-	let indexerSubscriptionRequestId: number | null = null;
-	let currentIndexerSubscriptionId: string | null = null;
+	let unsubscribeIndexerStatus: (() => void) | undefined;
 	let ipfsConnectionInterval: ReturnType<typeof setInterval> | undefined;
 	let heliaNode: Helia | null = null;
 
@@ -111,101 +113,26 @@ export function startAppConnections() {
 	})();
 
 	void (() => {
-		try {
-			indexerSocket = new WebSocket(INDEXER_ENDPOINT);
-
-			indexerSocket.addEventListener('open', () => {
-				if (!active || indexerSocket == null) return;
-
-				connections.indexerStatus = 'Connected';
-				connections.indexerSubscriptionStatus = 'Fetching status...';
-
-				const statusRequestId = ++indexerRequestId;
-				indexerSocket.send(
-					JSON.stringify({
-						jsonrpc: '2.0',
-						id: statusRequestId,
-						method: 'acuity_indexStatus',
-						params: {}
-					})
-				);
-
-				indexerSubscriptionRequestId = ++indexerRequestId;
-				indexerSocket.send(
-					JSON.stringify({
-						jsonrpc: '2.0',
-						id: indexerSubscriptionRequestId,
-						method: 'acuity_subscribeStatus',
-						params: {}
-					})
-				);
-			});
-
-			indexerSocket.addEventListener('message', (event) => {
+		configureIndexerConnectionState((state) => {
+			if (!active) return;
+			connections.indexerStatus = state.status;
+			connections.indexerSubscriptionStatus = state.subscriptionStatus;
+		});
+		startIndexer();
+		unsubscribeIndexerStatus = subscribeIndexerStatus((spans) => {
+			if (!active) return;
+			updateIndexerSpans(spans);
+			connections.indexerSubscriptionStatus = 'Subscribed to latest blocks';
+		});
+		void indexStatus()
+			.then((spans) => {
 				if (!active) return;
-
-				try {
-					const message = JSON.parse(event.data as string) as {
-						id?: number;
-						result?: unknown;
-						error?: { message?: string };
-						method?: string;
-						params?: {
-							subscription?: string;
-							result?: {
-								type?: string;
-								spans?: IndexSpan[];
-							};
-						};
-					};
-
-					if (message.error) {
-						connections.indexerSubscriptionStatus = `Request failed: ${message.error.message ?? 'Unknown error'}`;
-						return;
-					}
-
-					if (message.id != null && Array.isArray((message.result as { spans?: IndexSpan[] } | undefined)?.spans)) {
-						updateIndexerSpans((message.result as { spans: IndexSpan[] }).spans);
-						connections.indexerSubscriptionStatus = currentIndexerSubscriptionId
-							? 'Subscribed to latest blocks'
-							: 'Waiting for subscription confirmation...';
-						return;
-					}
-
-					if (message.id != null && message.id === indexerSubscriptionRequestId && typeof message.result === 'string') {
-						currentIndexerSubscriptionId = message.result;
-						connections.indexerSubscriptionId = message.result;
-						connections.indexerSubscriptionStatus = 'Subscribed to latest blocks';
-						return;
-					}
-
-					if (
-						message.method === 'acuity_subscription' &&
-						message.params?.result?.type === 'status' &&
-						Array.isArray(message.params.result.spans)
-					) {
-						updateIndexerSpans(message.params.result.spans);
-					}
-				} catch (error) {
-					connections.indexerSubscriptionStatus = `Message parse failed: ${error instanceof Error ? error.message : String(error)}`;
-				}
-			});
-
-			indexerSocket.addEventListener('close', () => {
+				updateIndexerSpans(spans);
+			})
+			.catch((error) => {
 				if (!active) return;
-				connections.indexerStatus = 'Disconnected';
-				connections.indexerSubscriptionStatus = 'Subscription closed';
+				connections.indexerSubscriptionStatus = `Request failed: ${error instanceof Error ? error.message : String(error)}`;
 			});
-
-			indexerSocket.addEventListener('error', () => {
-				if (!active) return;
-				connections.indexerStatus = `Connection failed: could not connect to ${INDEXER_ENDPOINT}`;
-				connections.indexerSubscriptionStatus = 'Unavailable';
-			});
-		} catch (error) {
-			connections.indexerStatus = `Connection failed: ${error instanceof Error ? error.message : String(error)}`;
-			connections.indexerSubscriptionStatus = 'Unavailable';
-		}
 	})();
 
 	void (async () => {
@@ -238,17 +165,8 @@ export function startAppConnections() {
 	stopConnections = () => {
 		active = false;
 		unsubscribeNewHeads?.();
-		if (indexerSocket && currentIndexerSubscriptionId) {
-			indexerSocket.send(
-				JSON.stringify({
-					jsonrpc: '2.0',
-					id: ++indexerRequestId,
-					method: 'acuity_unsubscribeStatus',
-					params: { subscription: currentIndexerSubscriptionId }
-				})
-			);
-		}
-		indexerSocket?.close();
+		unsubscribeIndexerStatus?.();
+		configureIndexerConnectionState(null);
 		if (ipfsConnectionInterval) clearInterval(ipfsConnectionInterval);
 		void connectedApi?.disconnect();
 		if (heliaNode) void heliaNode.stop();

@@ -7,6 +7,7 @@
 		loadInjectedAccounts,
 		selectInjectedAccount
 	} from '$lib/services/accounts.svelte';
+	import { getAccountBalanceLabel } from '$lib/services/balances.svelte';
 	import { connections } from '$lib/services/connections.svelte';
 	import { loadProfile, saveProfile, shortHex, type LoadedProfile, type ProfileDraft } from '$lib/services/profile';
 
@@ -153,8 +154,15 @@
 			<Menu.Trigger
 				class="border-surface-200-800 bg-surface-50-950 hover:bg-surface-100-900 inline-flex min-w-56 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors"
 			>
-				<div class="min-w-0">
-					<p class="truncate font-medium">{formatAccountLabel(injectedAccounts.activeAccount)}</p>
+				<div class="min-w-0 flex-1">
+					<div class="flex items-center justify-between gap-3">
+						<p class="truncate font-medium">{formatAccountLabel(injectedAccounts.activeAccount)}</p>
+						{#if injectedAccounts.activeAccount}
+							<span class="text-surface-700-300 shrink-0 text-xs font-medium">
+								{getAccountBalanceLabel(injectedAccounts.activeAccount.address)}
+							</span>
+						{/if}
+					</div>
 					<p class="text-surface-700-300 truncate text-xs">
 						{#if injectedAccounts.activeAccount}
 							{formatShortAddress(injectedAccounts.activeAccount.address)}
@@ -186,7 +194,12 @@
 									{account.address === injectedAccounts.activeAddress ? '✓' : ''}
 								</span>
 								<div class="min-w-0 flex-1">
-									<p class="truncate font-medium">{formatAccountLabel(account)}</p>
+									<div class="flex items-center justify-between gap-3">
+										<p class="truncate font-medium">{formatAccountLabel(account)}</p>
+										<span class="text-surface-700-300 shrink-0 text-xs font-medium">
+											{getAccountBalanceLabel(account.address)}
+										</span>
+									</div>
 									<p class="text-surface-700-300 truncate text-xs">
 										{formatShortAddress(account.address)}
 									</p>

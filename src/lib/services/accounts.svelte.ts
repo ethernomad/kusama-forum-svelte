@@ -1,3 +1,5 @@
+import { cryptoWaitReady, decodeAddress } from '@polkadot/util-crypto';
+
 const APP_NAME = 'Kusama Forum';
 const STORAGE_KEY = 'kusama-forum.active-account';
 
@@ -70,12 +72,26 @@ export async function loadInjectedAccounts() {
 			return;
 		}
 
-		const accounts = (await web3Accounts()) as InjectedAccount[];
-		injectedAccounts.accounts = accounts;
-		injectedAccounts.status =
-			accounts.length > 0
-				? `${accounts.length} account${accounts.length === 1 ? '' : 's'} available`
-				: 'No accounts available';
+		await cryptoWaitReady();
+		const allAccounts = (await web3Accounts()) as InjectedAccount[];
+		const supportedAccounts = allAccounts.filter((account) => {
+			try {
+				return decodeAddress(account.address).length === 32;
+			} catch {
+				return false;
+			}
+		});
+		const unsupportedCount = allAccounts.length - supportedAccounts.length;
+
+		injectedAccounts.accounts = supportedAccounts;
+		if (supportedAccounts.length === 0) {
+			injectedAccounts.status =
+				unsupportedCount > 0
+					? 'No compatible 32-byte Substrate accounts available'
+					: 'No accounts available';
+		} else {
+			injectedAccounts.status = `${supportedAccounts.length} compatible account${supportedAccounts.length === 1 ? '' : 's'} available${unsupportedCount > 0 ? ` (${unsupportedCount} unsupported hidden)` : ''}`;
+		}
 		syncActiveAccount();
 	} catch (error) {
 		injectedAccounts.extensionEnabled = false;
