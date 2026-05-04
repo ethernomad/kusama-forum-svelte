@@ -9,15 +9,18 @@
 	let chainName = $state('');
 	let nodeName = $state('');
 	let nodeVersion = $state('');
+	let latestBlockNumber = $state<string>('');
 	let api = $state<ApiPromise | null>(null);
 
 	onMount(() => {
 		let active = true;
+		let unsubscribeNewHeads: (() => void) | undefined;
+		let connectedApi: ApiPromise | null = null;
 
 		void (async () => {
 			try {
 				const provider = new WsProvider(ENDPOINT);
-				const connectedApi = await ApiPromise.create({ provider });
+				connectedApi = await ApiPromise.create({ provider });
 				await connectedApi.isReady;
 
 				const [runtimeChain, runtimeNode, runtimeVersion] = await Promise.all([
@@ -26,7 +29,13 @@
 					connectedApi.rpc.system.version()
 				]);
 
+				unsubscribeNewHeads = await connectedApi.rpc.chain.subscribeNewHeads((header) => {
+					if (!active) return;
+					latestBlockNumber = header.number.toString();
+				});
+
 				if (!active) {
+					unsubscribeNewHeads?.();
 					void connectedApi.disconnect();
 					return;
 				}
@@ -43,7 +52,8 @@
 
 		return () => {
 			active = false;
-			void api?.disconnect();
+			unsubscribeNewHeads?.();
+			void connectedApi?.disconnect();
 		};
 	});
 </script>
@@ -70,6 +80,9 @@
 				{/if}
 				{#if nodeVersion}
 					<p><span class="font-medium">Version:</span> {nodeVersion}</p>
+				{/if}
+				{#if latestBlockNumber}
+					<p><span class="font-medium">Latest block:</span> #{latestBlockNumber}</p>
 				{/if}
 			</div>
 		</div>
