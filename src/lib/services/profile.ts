@@ -12,6 +12,7 @@ type ProtoWriter = InstanceType<typeof Writer>;
 
 import type { InjectedAccount } from './accounts.svelte';
 import { getIndexedEvents } from './indexer.svelte';
+import { beginIpfsProvide, completeIpfsProvide, failIpfsProvide } from './ipfs-provide-status.svelte';
 const PROFILE_ITEM_FLAGS = 0x01;
 const PROFILE_MIXIN_ID = 0xbeef2144;
 const LANGUAGE_MIXIN_ID = 0x9bc7a0e6;
@@ -43,6 +44,18 @@ export type LoadedProfile = {
 };
 
 export type SaveProfileResult = LoadedProfile;
+
+export type PreparedProfileSave = {
+	draft: ProfileDraft;
+	existingItemIdHex: string | null;
+	existingImagePayload: Bytes | null;
+	selectedImageFileName: string | null;
+	imagePayload: Bytes | null;
+	imagePreviewDataUrl: string | null;
+	itemPayload: Bytes;
+	revisionIpfsHashHex: string;
+	revisionIpfsHashBytes: Bytes;
+};
 
 type MixinPayload = {
 	mixinId: number;
@@ -328,7 +341,12 @@ function shortHex(value: string | null): string {
 	return value.length <= 18 ? value : `${value.slice(0, 10)}...${value.slice(-8)}`;
 }
 
-export { shortHex };
+function ipfsDigestHexToCid(value: string | null): string {
+	if (!value) return '—';
+	return digestHexToCid(value).toString();
+}
+
+export { ipfsDigestHexToCid, shortHex };
 
 function concatBytes(...parts: Uint8Array[]): Uint8Array {
 	const length = parts.reduce((sum, bytes) => sum + bytes.length, 0);
@@ -375,12 +393,28 @@ function multihashBytesToCid(multihashBytes: Uint8Array): CID {
 	return CID.createV0(createDigest(0x12, digest.digest));
 }
 
+function provideCidInBackground(heliaNode: Helia, cid: CID): void {
+	const cidText = cid.toString();
+	beginIpfsProvide(cidText);
+	void heliaNode.routing
+		.provide(cid)
+		.then(() => {
+			completeIpfsProvide(cidText);
+		})
+		.catch((error) => {
+			failIpfsProvide(cidText, error);
+			console.error('Background IPFS provide failed for CID', cidText, error);
+		});
+}
+
 async function addIpfs(heliaNode: Helia, bytes: Uint8Array): Promise<CID> {
 	const fs = unixfs(heliaNode);
-	return await fs.addBytes(bytes, {
+	const cid = await fs.addBytes(bytes, {
 		cidVersion: 0,
 		rawLeaves: false
 	});
+	provideCidInBackground(heliaNode, cid);
+	return cid;
 }
 
 async function uploadIpfsDigest(heliaNode: Helia, bytes: Uint8Array): Promise<string> {
@@ -671,6 +705,31 @@ async function signAndFinalize(extrinsic: { signAndSend: Function }, account: In
 	});
 }
 
+export async function prepareProfileSave(params: {
+	heliaNode: Helia;
+	draft: ProfileDraft;
+	existingItemIdHex: string | null;
+	existingImagePayload: Bytes | null;
+	selectedImageFile: File | null;
+}): Promise<PreparedProfileSave> {
+	const { heliaNode, draft, existingItemIdHex, existingImagePayload, selectedImageFile } = params;
+	const builtImage = selectedImageFile ? await buildImagePayload(heliaNode, selectedImageFile) : null;
+	const imagePayload = builtImage?.payload ?? existingImagePayload;
+	const itemPayload = encodeProfileItem(draft, imagePayload);
+	const revisionIpfsHashHex = await uploadIpfsDigest(heliaNode, itemPayload);
+	return {
+		draft: { ...draft },
+		existingItemIdHex,
+		existingImagePayload,
+		selectedImageFileName: selectedImageFile?.name ?? null,
+		imagePayload,
+		imagePreviewDataUrl: builtImage?.previewDataUrl ?? null,
+		itemPayload,
+		revisionIpfsHashHex,
+		revisionIpfsHashBytes: hexToBytes(revisionIpfsHashHex)
+	};
+}
+
 export async function saveProfile(params: {
 	api: ApiPromise;
 	heliaNode: Helia;
@@ -679,13 +738,20 @@ export async function saveProfile(params: {
 	existingItemIdHex: string | null;
 	existingImagePayload: Bytes | null;
 	selectedImageFile: File | null;
+	prepared?: PreparedProfileSave | null;
 }): Promise<SaveProfileResult> {
-	const { api, heliaNode, account, draft, existingItemIdHex, existingImagePayload, selectedImageFile } = params;
-	const builtImage = selectedImageFile ? await buildImagePayload(heliaNode, selectedImageFile) : null;
-	const imagePayload = builtImage?.payload ?? existingImagePayload;
-	const itemPayload = encodeProfileItem(draft, imagePayload);
-	const revisionIpfsHashHex = await uploadIpfsDigest(heliaNode, itemPayload);
-	const revisionIpfsHashBytes = hexToBytes(revisionIpfsHashHex);
+	const { api, heliaNode, account, draft, existingItemIdHex, existingImagePayload, selectedImageFile, prepared } = params;
+	const canReusePrepared =
+		prepared != null &&
+		prepared.existingItemIdHex === existingItemIdHex &&
+		prepared.selectedImageFileName === (selectedImageFile?.name ?? null) &&
+		JSON.stringify(prepared.draft) === JSON.stringify(draft);
+	const resolved = canReusePrepared
+		? prepared
+		: await prepareProfileSave({ heliaNode, draft, existingItemIdHex, existingImagePayload, selectedImageFile });
+	const imagePayload = resolved.imagePayload;
+	const revisionIpfsHashHex = resolved.revisionIpfsHashHex;
+	const revisionIpfsHashBytes = resolved.revisionIpfsHashBytes;
 
 	if (existingItemIdHex) {
 		const itemIdBytes = hexToBytes(existingItemIdHex);
@@ -701,7 +767,7 @@ export async function saveProfile(params: {
 			itemIdHex: existingItemIdHex,
 			revisionIpfsHashHex,
 			draft,
-			imagePreviewDataUrl: builtImage?.previewDataUrl ?? (imagePayload ? await previewDataUrlForImageMixin(heliaNode, imagePayload) : null),
+			imagePreviewDataUrl: resolved.imagePreviewDataUrl ?? (imagePayload ? await previewDataUrlForImageMixin(heliaNode, imagePayload) : null),
 			existingImagePayload: imagePayload,
 			contentLoaded: true,
 			contentError: null
@@ -730,7 +796,7 @@ export async function saveProfile(params: {
 		itemIdHex: toHex(itemIdBytes),
 		revisionIpfsHashHex,
 		draft,
-		imagePreviewDataUrl: builtImage?.previewDataUrl ?? (imagePayload ? await previewDataUrlForImageMixin(heliaNode, imagePayload) : null),
+		imagePreviewDataUrl: resolved.imagePreviewDataUrl ?? (imagePayload ? await previewDataUrlForImageMixin(heliaNode, imagePayload) : null),
 		existingImagePayload: imagePayload,
 		contentLoaded: true,
 		contentError: null

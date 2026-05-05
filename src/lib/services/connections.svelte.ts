@@ -15,6 +15,40 @@ import {
 
 const ENDPOINT = 'ws://127.0.0.1:9944';
 const INDEXER_ENDPOINT = 'ws://127.0.0.1:8172';
+const LOCAL_IPFS_RECONNECT_INTERVAL_MS = 30_000;
+const IPFS_STATUS_INTERVAL_MS = 5_000;
+const DEFAULT_GLOBAL_IPFS_BOOTSTRAP_MULTIADDRS = [
+	'/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN',
+	'/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb',
+	'/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt',
+	'/dnsaddr/va1.bootstrap.libp2p.io/p2p/12D3KooWKnDdG3iXw9eTFijk3EWSunZcFi54Zka4wmtqtt6rPxc8',
+	'/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ'
+] as const;
+const DEFAULT_LOCAL_IPFS_MULTIADDRS = [
+	'/ip4/127.0.0.1/tcp/4002/ws/p2p/12D3KooWPp5C2RJQvTKRfTiwSgKxme9HcUY9zUt354RGpgb5zMBq'
+] as const;
+
+function configuredGlobalBootstrapMultiaddrs(): string[] {
+	const configured = import.meta.env.VITE_IPFS_BOOTSTRAP_ADDRS?.split(',')
+		.map((value: string) => value.trim())
+		.filter(Boolean);
+	return configured?.length ? configured : [...DEFAULT_GLOBAL_IPFS_BOOTSTRAP_MULTIADDRS];
+}
+
+function configuredLocalBootstrapMultiaddrs(): string[] {
+	const configured = import.meta.env.VITE_LOCAL_IPFS_BOOTSTRAP_ADDRS?.split(',')
+		.map((value: string) => value.trim())
+		.filter(Boolean);
+	return configured?.length ? configured : [...DEFAULT_LOCAL_IPFS_MULTIADDRS];
+}
+
+function configuredBootstrapMultiaddrs(): string[] {
+	return [...new Set([...configuredGlobalBootstrapMultiaddrs(), ...configuredLocalBootstrapMultiaddrs()])];
+}
+
+function isDialableMultiaddr(value: string): boolean {
+	return value.includes('/p2p/');
+}
 
 type ConnectionsState = {
 	endpoint: string;
@@ -34,6 +68,9 @@ type ConnectionsState = {
 	ipfsStatus: string;
 	ipfsPeerId: string;
 	ipfsMultiaddrs: string[];
+	ipfsSwarmAddresses: string[];
+	ipfsConnectedAddresses: string[];
+	ipfsLastLocalDialError: string;
 	ipfsConnections: number;
 	heliaNode: Helia | null;
 };
@@ -56,6 +93,9 @@ export const connections = $state<ConnectionsState>({
 	ipfsStatus: 'Starting browser IPFS node...',
 	ipfsPeerId: '',
 	ipfsMultiaddrs: [],
+	ipfsSwarmAddresses: configuredBootstrapMultiaddrs(),
+	ipfsConnectedAddresses: [],
+	ipfsLastLocalDialError: '',
 	ipfsConnections: 0,
 	heliaNode: null
 });
@@ -69,8 +109,45 @@ async function getOrCreateHeliaNode(): Promise<Helia> {
 	if (globalState.__kusamaForumHeliaNodePromise) return await globalState.__kusamaForumHeliaNodePromise;
 
 	globalState.__kusamaForumHeliaNodePromise = (async () => {
-		const { createHelia } = await import('helia');
-		const node = await createHelia();
+		const [{ createHelia }, { createLibp2p }, { webSockets }, { circuitRelayTransport }, { bootstrap }, { identify }, { kadDHT }, { ping }, { noise }, { yamux }] = await Promise.all([
+			import('helia'),
+			import('libp2p'),
+			import('@libp2p/websockets'),
+			import('@libp2p/circuit-relay-v2'),
+			import('@libp2p/bootstrap'),
+			import('@libp2p/identify'),
+			import('@libp2p/kad-dht'),
+			import('@libp2p/ping'),
+			import('@chainsafe/libp2p-noise'),
+			import('@chainsafe/libp2p-yamux')
+		]);
+
+		const libp2p = await createLibp2p({
+			addresses: {
+				listen: []
+			},
+			connectionGater: {
+				denyDialMultiaddr: async () => false,
+				filterMultiaddrForPeer: async () => true
+			},
+			transports: [webSockets(), circuitRelayTransport()],
+			connectionEncrypters: [noise()],
+			streamMuxers: [yamux()],
+			peerDiscovery: [
+				bootstrap({
+					list: configuredBootstrapMultiaddrs()
+				})
+			],
+			services: {
+				identify: identify(),
+				ping: ping(),
+				dht: kadDHT({
+					clientMode: true
+				})
+			}
+		});
+
+		const node = await createHelia({ libp2p });
 		globalState.__kusamaForumHeliaNode = node;
 		return node;
 	})();
@@ -92,6 +169,63 @@ const updateIndexerSpans = (spans: IndexSpan[]) => {
 	connections.indexerLastUpdate = new Date().toLocaleTimeString();
 };
 
+async function connectHeliaToLocalIpfs(node: Helia): Promise<void> {
+	const { multiaddr } = await import('@multiformats/multiaddr');
+	let lastError: unknown = null;
+
+	for (const target of configuredLocalBootstrapMultiaddrs().filter(isDialableMultiaddr)) {
+		const alreadyConnected = node.libp2p
+			.getConnections()
+			.some((connection) => connection.remoteAddr?.toString?.() === target || connection.remoteAddr?.toString?.().includes(target.split('/p2p/')[1] ?? ''));
+		if (alreadyConnected) {
+			connections.ipfsLastLocalDialError = '';
+			return;
+		}
+
+		try {
+			await node.libp2p.dial(multiaddr(target));
+			connections.ipfsLastLocalDialError = '';
+			return;
+		} catch (error) {
+			lastError = error;
+			connections.ipfsLastLocalDialError = error instanceof Error ? error.message : String(error);
+		}
+	}
+
+	if (lastError != null) {
+		console.warn('Background local IPFS reconnect failed', lastError);
+	}
+}
+
+function updateIpfsStatus(node: Helia): void {
+	const allConnections = node.libp2p.getConnections();
+	const connectionCount = allConnections.length;
+	const localBootstrapMultiaddrs = configuredLocalBootstrapMultiaddrs();
+	const localPeerIds = localBootstrapMultiaddrs.map((addr) => addr.split('/p2p/')[1] ?? '').filter(Boolean);
+	const localConnected = allConnections.some((connection) => localPeerIds.includes(connection.remotePeer?.toString() ?? ''));
+	const connectedAddresses = new Set(allConnections.map((connection) => connection.remoteAddr?.toString?.() ?? '').filter(Boolean));
+
+	for (const connection of allConnections) {
+		const remotePeerId = connection.remotePeer?.toString() ?? '';
+		if (!remotePeerId) continue;
+
+		for (const target of localBootstrapMultiaddrs) {
+			if (target.includes(`/p2p/${remotePeerId}`)) {
+				connectedAddresses.add(target);
+			}
+		}
+	}
+
+	connections.ipfsConnections = connectionCount;
+	connections.ipfsMultiaddrs = node.libp2p.getMultiaddrs().map((addr: { toString(): string }) => addr.toString());
+	connections.ipfsSwarmAddresses = configuredBootstrapMultiaddrs();
+	connections.ipfsConnectedAddresses = [...connectedAddresses].sort();
+	connections.ipfsStatus =
+		connectionCount > 0
+			? `Connected to global IPFS (${connectionCount} peer${connectionCount === 1 ? '' : 's'}${localConnected ? ', local node linked' : ', local node reconnecting'})`
+			: `Running in browser (discovering global IPFS peers${localConnected ? ', local node linked' : ', local node reconnecting'}...)`;
+}
+
 export function startAppConnections() {
 	if (started) return stopConnections ?? (() => {});
 	started = true;
@@ -101,6 +235,7 @@ export function startAppConnections() {
 	let connectedApi: ApiPromise | null = null;
 	let unsubscribeIndexerStatus: (() => void) | undefined;
 	let ipfsConnectionInterval: ReturnType<typeof setInterval> | undefined;
+	let localReconnectInterval: ReturnType<typeof setInterval> | undefined;
 	let heliaNode: Helia | null = null;
 
 	void (async () => {
@@ -170,15 +305,17 @@ export function startAppConnections() {
 
 			connections.heliaNode = node;
 			connections.ipfsPeerId = node.libp2p.peerId.toString();
-			connections.ipfsMultiaddrs = node.libp2p.getMultiaddrs().map((addr: { toString(): string }) => addr.toString());
-			connections.ipfsConnections = node.libp2p.getConnections().length;
-			connections.ipfsStatus = 'Running in browser';
+			updateIpfsStatus(node);
+			void connectHeliaToLocalIpfs(node);
 
 			ipfsConnectionInterval = setInterval(() => {
 				if (!active) return;
-				connections.ipfsConnections = node.libp2p.getConnections().length;
-				connections.ipfsMultiaddrs = node.libp2p.getMultiaddrs().map((addr: { toString(): string }) => addr.toString());
-			}, 2_000);
+				updateIpfsStatus(node);
+			}, IPFS_STATUS_INTERVAL_MS);
+			localReconnectInterval = setInterval(() => {
+				if (!active) return;
+				void connectHeliaToLocalIpfs(node);
+			}, LOCAL_IPFS_RECONNECT_INTERVAL_MS);
 		} catch (error) {
 			connections.ipfsStatus = `IPFS start failed: ${error instanceof Error ? error.message : String(error)}`;
 		}
@@ -190,6 +327,7 @@ export function startAppConnections() {
 		unsubscribeIndexerStatus?.();
 		configureIndexerConnectionState(null);
 		if (ipfsConnectionInterval) clearInterval(ipfsConnectionInterval);
+		if (localReconnectInterval) clearInterval(localReconnectInterval);
 		void connectedApi?.disconnect();
 		started = false;
 		stopConnections = null;

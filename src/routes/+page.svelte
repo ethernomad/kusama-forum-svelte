@@ -9,16 +9,21 @@
 	} from '$lib/services/accounts.svelte';
 	import { getAccountBalanceLabel } from '$lib/services/balances.svelte';
 	import { connections } from '$lib/services/connections.svelte';
+	import { ipfsProvideStatus } from '$lib/services/ipfs-provide-status.svelte';
 	import {
 		loadProfileContent,
 		loadProfileMetadata,
+		prepareProfileSave,
 		saveProfile,
+		ipfsDigestHexToCid,
 		shortHex,
 		type LoadedProfile,
+		type PreparedProfileSave,
 		type ProfileDraft
 	} from '$lib/services/profile';
 
-	const isConnected = (status: string) => status === 'Connected' || status === 'Running in browser';
+	const isConnected = (status: string) =>
+		status === 'Connected' || status.startsWith('Running in browser') || status.startsWith('Connected to global IPFS');
 
 	const accountTypeOptions = [
 		{ value: 0, label: 'Anon' },
@@ -44,16 +49,31 @@
 	let selectedImagePreview: string | null = $state(null);
 	let loadingProfile = $state(false);
 	let savingProfile = $state(false);
+	let preparingProfileSave = $state(false);
+	let preparedProfileSave: PreparedProfileSave | null = $state(null);
 	let profileError = $state('');
 	let profileNotice = $state('');
 	let refreshTick = $state(0);
 	let profileLoadRequest = 0;
+	let prepareProfileRequest = 0;
 
 	const activeAccount = $derived(injectedAccounts.activeAccount);
 	const activeAddress = $derived(activeAccount?.address ?? '');
 	const activeAccountTypeLabel = $derived(
 		accountTypeOptions.find((option) => option.value === draft.accountType)?.label ?? 'Anon'
 	);
+	const ipfsProvideMessage = $derived.by(() => {
+		if (ipfsProvideStatus.pending > 0) {
+			return `Advertising ${ipfsProvideStatus.pending} IPFS item${ipfsProvideStatus.pending === 1 ? '' : 's'}...`;
+		}
+		if (ipfsProvideStatus.lastError) {
+			return `IPFS advertisement failed: ${ipfsProvideStatus.lastError}`;
+		}
+		if (ipfsProvideStatus.lastCompletedAt) {
+			return `Last IPFS advertisement completed at ${new Date(ipfsProvideStatus.lastCompletedAt).toLocaleTimeString()}.`;
+		}
+		return 'Idle.';
+	});
 
 	function applyProfile(next: LoadedProfile) {
 		profile = next;
@@ -140,6 +160,51 @@
 		});
 	}
 
+	$effect(() => {
+		void draft.name;
+		void draft.bio;
+		void draft.location;
+		void draft.accountType;
+		void selectedImageFile;
+		void existingImagePayload;
+		void profile?.itemIdHex;
+		const heliaNode = connections.heliaNode;
+		if (!heliaNode) {
+			preparedProfileSave = null;
+			preparingProfileSave = false;
+			return;
+		}
+
+		const requestId = ++prepareProfileRequest;
+		preparingProfileSave = true;
+		preparedProfileSave = null;
+		const timer = setTimeout(() => {
+			void prepareProfileSave({
+				heliaNode,
+				draft: { ...draft },
+				existingItemIdHex: profile?.itemIdHex ?? null,
+				existingImagePayload,
+				selectedImageFile
+			})
+				.then((prepared) => {
+					if (requestId !== prepareProfileRequest) return;
+					preparedProfileSave = prepared;
+				})
+				.catch(() => {
+					if (requestId !== prepareProfileRequest) return;
+					preparedProfileSave = null;
+				})
+				.finally(() => {
+					if (requestId !== prepareProfileRequest) return;
+					preparingProfileSave = false;
+				});
+		}, 300);
+
+		return () => {
+			clearTimeout(timer);
+		};
+	});
+
 	async function submitProfile() {
 		profileError = '';
 		profileNotice = '';
@@ -156,6 +221,10 @@
 			profileError = 'Start the in-browser Helia node before saving a profile.';
 			return;
 		}
+		if (preparingProfileSave || !preparedProfileSave) {
+			profileNotice = 'Preparing IPFS payload in the background. Transaction signing will be available as soon as preparation completes.';
+			return;
+		}
 
 		savingProfile = true;
 		try {
@@ -166,9 +235,11 @@
 				draft,
 				existingItemIdHex: profile?.itemIdHex ?? null,
 				existingImagePayload,
-				selectedImageFile
+				selectedImageFile,
+				prepared: preparedProfileSave
 			});
 			applyProfile(saved);
+			preparedProfileSave = null;
 			profileNotice = saved.itemIdHex === profile?.itemIdHex ? 'Profile revision published successfully.' : 'Profile created successfully.';
 		} catch (error) {
 			profileError = error instanceof Error ? error.message : String(error);
@@ -297,6 +368,41 @@
 			<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-4 text-sm">
 				<h2 class="mb-2 text-base font-medium">Profile status</h2>
 				<p class="text-surface-700-300">Profiles are encoded as the same protobuf item payload used by acuity-dioxus before publishing to IPFS and the chain.</p>
+				<p class={`mt-3 text-xs ${ipfsProvideStatus.lastError ? 'text-red-300' : 'text-surface-700-300'}`}>{ipfsProvideMessage}</p>
+				{#if connections.ipfsLastLocalDialError}
+					<p class="mt-2 text-xs text-red-300">Local Kubo dial error: {connections.ipfsLastLocalDialError}</p>
+				{/if}
+
+				<div class="mt-4 space-y-2">
+					<h3 class="text-xs font-medium uppercase tracking-wide text-surface-700-300">Helia swarm targets</h3>
+					{#if connections.ipfsSwarmAddresses.length > 0}
+						<ul class="space-y-2 text-xs break-all">
+							{#each connections.ipfsSwarmAddresses as address}
+								<li class="rounded-lg border border-surface-200-800 bg-surface-100-900 px-2 py-1">
+									<div class="flex items-start justify-between gap-2">
+										<span class="font-mono">{address}</span>
+										<span class={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${connections.ipfsConnectedAddresses.includes(address) ? 'bg-green-500/15 text-green-300' : 'bg-surface-200-800 text-surface-700-300'}`}>
+											{connections.ipfsConnectedAddresses.includes(address) ? 'connected' : 'dialing'}
+										</span>
+									</div>
+								</li>
+							{/each}
+						</ul>
+					{:else}
+						<p class="text-xs text-surface-700-300">No Helia swarm addresses configured.</p>
+					{/if}
+				</div>
+
+				{#if connections.ipfsConnectedAddresses.some((address) => !connections.ipfsSwarmAddresses.includes(address))}
+					<div class="mt-4 space-y-2">
+						<h3 class="text-xs font-medium uppercase tracking-wide text-surface-700-300">Other active peer addresses</h3>
+						<ul class="space-y-2 text-xs break-all">
+							{#each connections.ipfsConnectedAddresses.filter((address) => !connections.ipfsSwarmAddresses.includes(address)) as address}
+								<li class="rounded-lg border border-surface-200-800 bg-surface-100-900 px-2 py-1 font-mono">{address}</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
 			</section>
 		</aside>
 
@@ -360,7 +466,13 @@
 
 						<div class="flex flex-wrap gap-3">
 							<button class="btn variant-filled-primary" onclick={submitProfile} disabled={!activeAccount || !connections.api || !connections.heliaNode || savingProfile}>
-								{#if savingProfile}Saving...{:else if profile?.exists}Save profile{:else}Create profile{/if}
+								{#if savingProfile}
+									Saving...
+								{:else if profile?.exists}
+									Save profile
+								{:else}
+									Create profile
+								{/if}
 							</button>
 							<button
 								class="btn variant-outline"
@@ -417,7 +529,7 @@
 						</div>
 						<div>
 							<p class="text-surface-700-300 text-xs uppercase">Latest revision</p>
-							<code class="mt-1 block text-xs">{shortHex(profile?.revisionIpfsHashHex ?? null)}</code>
+							<code class="mt-1 block break-all text-xs">{ipfsDigestHexToCid(profile?.revisionIpfsHashHex ?? null)}</code>
 						</div>
 						<div>
 							<p class="text-surface-700-300 text-xs uppercase">State</p>
