@@ -5,7 +5,9 @@ import { circuitRelayTransport } from '@libp2p/circuit-relay-v2';
 import { identify } from '@libp2p/identify';
 import { kadDHT } from '@libp2p/kad-dht';
 import { ping } from '@libp2p/ping';
+import { webRTC } from '@libp2p/webrtc';
 import { webSockets } from '@libp2p/websockets';
+import { webTransport } from '@libp2p/webtransport';
 import { multiaddr } from '@multiformats/multiaddr';
 import { ApiPromise, WsProvider } from '@polkadot/api';
 import { createHelia, type Helia } from 'helia';
@@ -28,11 +30,10 @@ const INDEXER_ENDPOINT = 'ws://127.0.0.1:8172';
 const LOCAL_IPFS_RECONNECT_INTERVAL_MS = 30_000;
 const IPFS_STATUS_INTERVAL_MS = 5_000;
 const DEFAULT_GLOBAL_IPFS_BOOTSTRAP_MULTIADDRS = [
-	'/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN',
-	'/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb',
-	'/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt',
-	'/dnsaddr/va1.bootstrap.libp2p.io/p2p/12D3KooWKnDdG3iXw9eTFijk3EWSunZcFi54Zka4wmtqtt6rPxc8',
-	'/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ'
+	'/dns/am6.bootstrap.libp2p.io/tcp/443/wss/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb',
+	'/dns/ny5.bootstrap.libp2p.io/tcp/443/wss/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa',
+	'/dns/sg1.bootstrap.libp2p.io/tcp/443/wss/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt',
+	'/dns/sv15.bootstrap.libp2p.io/tcp/443/wss/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN'
 ] as const;
 const DEFAULT_LOCAL_IPFS_MULTIADDRS = [
 	'/ip4/127.0.0.1/tcp/4002/ws/p2p/12D3KooWPp5C2RJQvTKRfTiwSgKxme9HcUY9zUt354RGpgb5zMBq'
@@ -103,7 +104,7 @@ export const connections = $state<ConnectionsState>({
 	ipfsStatus: 'Starting browser IPFS node...',
 	ipfsPeerId: '',
 	ipfsMultiaddrs: [],
-	ipfsSwarmAddresses: configuredBootstrapMultiaddrs(),
+	ipfsSwarmAddresses: [...DEFAULT_LOCAL_IPFS_MULTIADDRS],
 	ipfsConnectedAddresses: [],
 	ipfsLastLocalDialError: '',
 	ipfsConnections: 0,
@@ -127,7 +128,7 @@ async function getOrCreateHeliaNode(): Promise<Helia> {
 				denyDialMultiaddr: async () => false,
 				filterMultiaddrForPeer: async () => true
 			},
-			transports: [webSockets(), circuitRelayTransport()],
+			transports: [webSockets(), webRTC(), webTransport(), circuitRelayTransport()],
 			connectionEncrypters: [noise()],
 			streamMuxers: [yamux()],
 			peerDiscovery: [
@@ -214,7 +215,7 @@ function updateIpfsStatus(node: Helia): void {
 
 	connections.ipfsConnections = connectionCount;
 	connections.ipfsMultiaddrs = node.libp2p.getMultiaddrs().map((addr: { toString(): string }) => addr.toString());
-	connections.ipfsSwarmAddresses = configuredBootstrapMultiaddrs();
+	connections.ipfsSwarmAddresses = [...DEFAULT_LOCAL_IPFS_MULTIADDRS];
 	connections.ipfsConnectedAddresses = [...connectedAddresses].sort();
 	connections.ipfsStatus =
 		connectionCount > 0
