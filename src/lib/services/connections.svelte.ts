@@ -36,7 +36,8 @@ const DEFAULT_GLOBAL_IPFS_BOOTSTRAP_MULTIADDRS = [
 	'/dns/sv15.bootstrap.libp2p.io/tcp/443/wss/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN'
 ] as const;
 const DEFAULT_LOCAL_IPFS_MULTIADDRS = [
-	'/ip4/127.0.0.1/tcp/4002/ws/p2p/12D3KooWPp5C2RJQvTKRfTiwSgKxme9HcUY9zUt354RGpgb5zMBq'
+	'/ip4/127.0.0.1/tcp/4002/ws/p2p/12D3KooWPp5C2RJQvTKRfTiwSgKxme9HcUY9zUt354RGpgb5zMBq',
+	'/ip6/::1/tcp/4002/ws/p2p/12D3KooWPp5C2RJQvTKRfTiwSgKxme9HcUY9zUt354RGpgb5zMBq'
 ] as const;
 
 function configuredGlobalBootstrapMultiaddrs(): string[] {
@@ -233,7 +234,6 @@ export function startAppConnections() {
 	let unsubscribeIndexerStatus: (() => void) | undefined;
 	let ipfsConnectionInterval: ReturnType<typeof setInterval> | undefined;
 	let localReconnectInterval: ReturnType<typeof setInterval> | undefined;
-	let heliaNode: Helia | null = null;
 
 	void (async () => {
 		try {
@@ -294,7 +294,6 @@ export function startAppConnections() {
 	void (async () => {
 		try {
 			const node = await getOrCreateHeliaNode();
-			heliaNode = node;
 
 			if (!active) {
 				return;
