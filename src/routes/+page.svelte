@@ -22,6 +22,8 @@
 		type ProfileDraft
 	} from '$lib/services/profile';
 
+	let contentLookupId = $state('');
+
 	const isConnected = (status: string) =>
 		status === 'Connected' || status.startsWith('Running in browser') || status.startsWith('Connected to global IPFS');
 
@@ -404,10 +406,25 @@
 						This matches the Acuity profile flow: publish a profile item, store the protobuf payload on IPFS, and update future edits as item revisions.
 					</p>
 				</div>
-				<button class="variant-outline btn" onclick={() => (refreshTick += 1)} disabled={savingProfile}>
-					Refresh
-				</button>
+				<div class="flex flex-wrap gap-3">
+					<a class="btn variant-outline" href="/create-forum">Create forum</a>
+					<button class="variant-outline btn" onclick={() => (refreshTick += 1)} disabled={savingProfile}>
+						Refresh
+					</button>
+				</div>
 			</header>
+
+			<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-4">
+				<div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+					<label class="block flex-1 space-y-2 text-sm">
+						<span class="font-medium">Open content by item ID</span>
+						<input class="w-full rounded-lg border-surface-200-800 bg-surface-100-900" bind:value={contentLookupId} placeholder="0x..." />
+					</label>
+					<a class="btn variant-outline" href={contentLookupId.trim() ? `/${contentLookupId.trim()}` : '/'} aria-disabled={!contentLookupId.trim()}>
+						Open content
+					</a>
+				</div>
+			</section>
 
 			{#if profileError}
 				<div class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">{profileError}</div>
