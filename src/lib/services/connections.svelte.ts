@@ -1,5 +1,15 @@
+import { noise } from '@chainsafe/libp2p-noise';
+import { yamux } from '@chainsafe/libp2p-yamux';
+import { bootstrap } from '@libp2p/bootstrap';
+import { circuitRelayTransport } from '@libp2p/circuit-relay-v2';
+import { identify } from '@libp2p/identify';
+import { kadDHT } from '@libp2p/kad-dht';
+import { ping } from '@libp2p/ping';
+import { webSockets } from '@libp2p/websockets';
+import { multiaddr } from '@multiformats/multiaddr';
 import { ApiPromise, WsProvider } from '@polkadot/api';
-import type { Helia } from 'helia';
+import { createHelia, type Helia } from 'helia';
+import { createLibp2p } from 'libp2p';
 
 type GlobalHeliaState = typeof globalThis & {
 	__kusamaForumHeliaNode?: Helia | null;
@@ -109,19 +119,6 @@ async function getOrCreateHeliaNode(): Promise<Helia> {
 	if (globalState.__kusamaForumHeliaNodePromise) return await globalState.__kusamaForumHeliaNodePromise;
 
 	globalState.__kusamaForumHeliaNodePromise = (async () => {
-		const [{ createHelia }, { createLibp2p }, { webSockets }, { circuitRelayTransport }, { bootstrap }, { identify }, { kadDHT }, { ping }, { noise }, { yamux }] = await Promise.all([
-			import('helia'),
-			import('libp2p'),
-			import('@libp2p/websockets'),
-			import('@libp2p/circuit-relay-v2'),
-			import('@libp2p/bootstrap'),
-			import('@libp2p/identify'),
-			import('@libp2p/kad-dht'),
-			import('@libp2p/ping'),
-			import('@chainsafe/libp2p-noise'),
-			import('@chainsafe/libp2p-yamux')
-		]);
-
 		const libp2p = await createLibp2p({
 			addresses: {
 				listen: []
@@ -170,7 +167,6 @@ const updateIndexerSpans = (spans: IndexSpan[]) => {
 };
 
 async function connectHeliaToLocalIpfs(node: Helia): Promise<void> {
-	const { multiaddr } = await import('@multiformats/multiaddr');
 	let lastError: unknown = null;
 
 	for (const target of configuredLocalBootstrapMultiaddrs().filter(isDialableMultiaddr)) {

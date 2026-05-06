@@ -392,17 +392,6 @@
 						<p class="text-xs text-surface-700-300">No Helia swarm addresses configured.</p>
 					{/if}
 				</div>
-
-				{#if connections.ipfsConnectedAddresses.some((address) => !connections.ipfsSwarmAddresses.includes(address))}
-					<div class="mt-4 space-y-2">
-						<h3 class="text-xs font-medium uppercase tracking-wide text-surface-700-300">Other active peer addresses</h3>
-						<ul class="space-y-2 text-xs break-all">
-							{#each connections.ipfsConnectedAddresses.filter((address) => !connections.ipfsSwarmAddresses.includes(address)) as address}
-								<li class="rounded-lg border border-surface-200-800 bg-surface-100-900 px-2 py-1 font-mono">{address}</li>
-							{/each}
-						</ul>
-					</div>
-				{/if}
 			</section>
 		</aside>
 
