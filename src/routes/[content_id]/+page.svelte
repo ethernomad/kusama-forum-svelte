@@ -69,6 +69,7 @@
 				<div class="mb-4">
 					<p class="text-surface-700-300 text-xs uppercase">Type</p>
 					<p class="mt-1 text-sm font-medium">{contentTypeLabel(content)}</p>
+					<p class="text-surface-700-300 mt-1 text-xs">content_type_id: {content.contentTypeId ?? '—'}</p>
 				</div>
 
 				<h2 class="text-2xl font-semibold">{content.title || 'Untitled content'}</h2>
@@ -94,6 +95,11 @@
 				<div>
 					<p class="text-surface-700-300 text-xs uppercase">Latest revision</p>
 					<code class="mt-1 block break-all text-xs">{ipfsDigestHexToCid(content.revisionIpfsHashHex)}</code>
+				</div>
+				<div>
+					<p class="text-surface-700-300 text-xs uppercase">Content type</p>
+					<p class="mt-1">{contentTypeLabel(content)}</p>
+					<p class="text-surface-700-300 mt-1 text-xs">ID: {content.contentTypeId ?? '—'}</p>
 				</div>
 				<div>
 					<p class="text-surface-700-300 text-xs uppercase">Language</p>

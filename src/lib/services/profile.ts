@@ -14,6 +14,8 @@ import type { InjectedAccount } from './accounts.svelte';
 import { getIndexedEvents } from './indexer.svelte';
 import { beginIpfsProvide, completeIpfsProvide, failIpfsProvide } from './ipfs-provide-status.svelte';
 const PROFILE_ITEM_FLAGS = 0x01;
+const PROFILE_CONTENT_TYPE_ID = 4;
+const FORUM_CONTENT_TYPE_ID = 5;
 const PROFILE_MIXIN_ID = 0xbeef2144;
 const LANGUAGE_MIXIN_ID = 0x9bc7a0e6;
 const TITLE_MIXIN_ID = 0x344f4812;
@@ -63,6 +65,7 @@ type MixinPayload = {
 };
 
 type ItemMessage = {
+	contentTypeId: number;
 	mixinPayload: MixinPayload[];
 };
 
@@ -152,19 +155,23 @@ function decodeMixinPayload(reader: ProtoReader, length: number): MixinPayload {
 
 function encodeItemMessage(message: ItemMessage): Uint8Array {
 	const writer = Writer.create();
+	writeUInt32Field(writer, 1, message.contentTypeId >>> 0);
 	for (const mixin of message.mixinPayload) {
-		writer.uint32((1 << 3) | 2).bytes(encodeMixinPayload(mixin));
+		writer.uint32((2 << 3) | 2).bytes(encodeMixinPayload(mixin));
 	}
 	return writer.finish();
 }
 
 function decodeItemMessage(bytes: Uint8Array): ItemMessage {
 	const reader = Reader.create(bytes);
-	const message: ItemMessage = { mixinPayload: [] };
+	const message: ItemMessage = { contentTypeId: 0, mixinPayload: [] };
 	while (reader.pos < reader.len) {
 		const tag = reader.uint32();
 		switch (tag >>> 3) {
 			case 1:
+				message.contentTypeId = reader.uint32();
+				break;
+			case 2:
 				message.mixinPayload.push(decodeMixinPayload(reader, reader.uint32()));
 				break;
 			default:
@@ -508,6 +515,7 @@ async function previewDataUrlForImageMixin(heliaNode: Helia, payload: Bytes): Pr
 
 function encodeProfileItem(draft: ProfileDraft, imagePayload: Bytes | null): Bytes {
 	const item: ItemMessage = {
+		contentTypeId: PROFILE_CONTENT_TYPE_ID,
 		mixinPayload: [
 			{ mixinId: PROFILE_MIXIN_ID, payload: encodeProfileMixin(draft.accountType, draft.location) },
 			{ mixinId: LANGUAGE_MIXIN_ID, payload: encodeLanguageMixin(DEFAULT_LANGUAGE_TAG) },
@@ -646,6 +654,10 @@ export async function loadProfileContent(heliaNode: Helia, profile: LoadedProfil
 		const bodyPayload = findMixin(item, BODY_TEXT_MIXIN_ID);
 		const profilePayload = findMixin(item, PROFILE_MIXIN_ID);
 		const imagePayload = findMixin(item, IMAGE_MIXIN_ID);
+		const contentTypeId = item.contentTypeId;
+		if (contentTypeId !== PROFILE_CONTENT_TYPE_ID) {
+			throw new Error(`Profile item has unexpected content_type_id ${contentTypeId}; expected ${PROFILE_CONTENT_TYPE_ID}.`);
+		}
 
 		const title = titlePayload ? decodeTitleMixin(titlePayload).title : '';
 		const bodyText = bodyPayload ? decodeBodyTextMixin(bodyPayload).bodyText : '';

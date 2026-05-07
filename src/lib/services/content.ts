@@ -21,10 +21,13 @@ type MixinPayload = {
 };
 
 type ItemMessage = {
+	contentTypeId: number;
 	mixinPayload: MixinPayload[];
 };
 
 const PROFILE_ITEM_FLAGS = 0x01;
+const PROFILE_CONTENT_TYPE_ID = 4;
+const FORUM_CONTENT_TYPE_ID = 5;
 const LANGUAGE_MIXIN_ID = 0x9bc7a0e6;
 const TITLE_MIXIN_ID = 0x344f4812;
 const BODY_TEXT_MIXIN_ID = 0x2d382044;
@@ -43,6 +46,7 @@ export type LoadedContent = {
 	itemIdHex: string;
 	revisionIpfsHashHex: string | null;
 	contentType: 'profile' | 'forum' | 'unknown';
+	contentTypeId: number | null;
 	title: string;
 	bodyText: string;
 	languageTag: string | null;
@@ -73,6 +77,10 @@ function writeBytesField(writer: ProtoWriter, fieldNumber: number, value: Bytes)
 
 function writeStringField(writer: ProtoWriter, fieldNumber: number, value: string) {
 	writer.uint32((fieldNumber << 3) | 2).string(value);
+}
+
+function writeUInt32Field(writer: ProtoWriter, fieldNumber: number, value: number) {
+	writer.uint32((fieldNumber << 3) | 0).uint32(value >>> 0);
 }
 
 function writeInt32Field(writer: ProtoWriter, fieldNumber: number, value: number) {
@@ -108,19 +116,23 @@ function decodeMixinPayload(reader: ProtoReader, length: number): MixinPayload {
 
 function encodeItemMessage(message: ItemMessage): Uint8Array {
 	const writer = Writer.create();
+	writeUInt32Field(writer, 1, message.contentTypeId >>> 0);
 	for (const mixin of message.mixinPayload) {
-		writer.uint32((1 << 3) | 2).bytes(encodeMixinPayload(mixin));
+		writer.uint32((2 << 3) | 2).bytes(encodeMixinPayload(mixin));
 	}
 	return writer.finish();
 }
 
 function decodeItemMessage(bytes: Uint8Array): ItemMessage {
 	const reader = Reader.create(bytes);
-	const message: ItemMessage = { mixinPayload: [] };
+	const message: ItemMessage = { contentTypeId: 0, mixinPayload: [] };
 	while (reader.pos < reader.len) {
 		const tag = reader.uint32();
 		switch (tag >>> 3) {
 			case 1:
+				message.contentTypeId = reader.uint32();
+				break;
+			case 2:
 				message.mixinPayload.push(decodeMixinPayload(reader, reader.uint32()));
 				break;
 			default:
@@ -400,9 +412,9 @@ async function fetchLatestRevisionHash(itemIdHex: string): Promise<string> {
 	return latest;
 }
 
-function detectContentType(item: ItemMessage): 'profile' | 'forum' | 'unknown' {
-	if (findMixin(item, PROFILE_MIXIN_ID)) return 'profile';
-	if (findMixin(item, TITLE_MIXIN_ID) || findMixin(item, BODY_TEXT_MIXIN_ID)) return 'forum';
+function detectContentType(contentTypeId: number | null): 'profile' | 'forum' | 'unknown' {
+	if (contentTypeId === PROFILE_CONTENT_TYPE_ID) return 'profile';
+	if (contentTypeId === FORUM_CONTENT_TYPE_ID) return 'forum';
 	return 'unknown';
 }
 
@@ -416,12 +428,14 @@ export async function loadContentById(heliaNode: Helia, itemIdHex: string): Prom
 	const languagePayload = findMixin(item, LANGUAGE_MIXIN_ID);
 	const profilePayload = findMixin(item, PROFILE_MIXIN_ID);
 	const imagePayload = findMixin(item, IMAGE_MIXIN_ID);
+	const contentTypeId = item.contentTypeId;
 	const decodedProfile = profilePayload ? decodeProfileMixin(profilePayload) : null;
 
 	return {
 		itemIdHex: normalizedItemIdHex,
 		revisionIpfsHashHex,
-		contentType: detectContentType(item),
+		contentType: detectContentType(contentTypeId),
+		contentTypeId,
 		title: titlePayload ? decodeTitleMixin(titlePayload).title : '',
 		bodyText: bodyPayload ? decodeBodyTextMixin(bodyPayload).bodyText : '',
 		languageTag: languagePayload ? decodeLanguageMixin(languagePayload).languageTag : null,
@@ -436,6 +450,7 @@ export async function loadContentById(heliaNode: Helia, itemIdHex: string): Prom
 
 function encodeForumItem(draft: ForumDraft): Bytes {
 	return encodeItemMessage({
+		contentTypeId: FORUM_CONTENT_TYPE_ID,
 		mixinPayload: [
 			{ mixinId: LANGUAGE_MIXIN_ID, payload: encodeLanguageMixin(DEFAULT_LANGUAGE_TAG) },
 			{ mixinId: TITLE_MIXIN_ID, payload: encodeTitleMixin(draft.title) },
