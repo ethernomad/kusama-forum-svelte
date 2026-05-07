@@ -4,7 +4,7 @@
 		accountAddressToHex,
 		ipfsDigestHexToCid,
 		loadContentById,
-		loadForumCategories,
+		loadForumCategoriesIncremental,
 		retractItem,
 		saveCategory,
 		shortHex,
@@ -21,8 +21,10 @@
 	let categoryError = $state('');
 	let categoryNotice = $state('');
 	let categorySaving = $state(false);
+	let categoryLoading = $state(false);
 	let categoryDraft = $state({ title: '', body: '' });
 	let requestId = 0;
+	let categoryRequestId = 0;
 
 	const contentId = $derived(page.params.content_id);
 	const isForumOwner = $derived.by(() => {
@@ -37,18 +39,19 @@
 		if (!heliaNode || !contentId) return;
 
 		const currentRequestId = ++requestId;
+		++categoryRequestId;
 		loading = true;
 		error = '';
 		content = null;
 		categories = [];
+		categoryLoading = false;
 		categoryError = '';
 		categoryNotice = '';
 		void loadContentById(heliaNode, contentId, connections.api)
-			.then(async (value) => {
+			.then((value) => {
 				if (currentRequestId !== requestId) return;
 				content = value;
-				if (value.contentType !== 'forum') return;
-				categories = await loadForumCategories({ heliaNode, api: connections.api, forum: value });
+				if (value.contentType === 'forum') void refreshCategories(value);
 			})
 			.catch((value) => {
 				if (currentRequestId !== requestId) return;
@@ -73,9 +76,26 @@
 		}
 	}
 
-	async function refreshCategories() {
-		if (!connections.heliaNode || !content || content.contentType !== 'forum') return;
-		categories = await loadForumCategories({ heliaNode: connections.heliaNode, api: connections.api, forum: content });
+	async function refreshCategories(forum = content) {
+		if (!connections.heliaNode || !forum || forum.contentType !== 'forum') return;
+		const currentCategoryRequestId = ++categoryRequestId;
+		categories = [];
+		categoryLoading = true;
+		try {
+			await loadForumCategoriesIncremental({
+				heliaNode: connections.heliaNode,
+				api: connections.api,
+				forum,
+				onCategory: (category) => {
+					if (currentCategoryRequestId !== categoryRequestId) return;
+					categories = [...categories, category];
+				}
+			});
+		} catch (value) {
+			if (currentCategoryRequestId === categoryRequestId) categoryError = value instanceof Error ? value.message : String(value);
+		} finally {
+			if (currentCategoryRequestId === categoryRequestId) categoryLoading = false;
+		}
 	}
 
 	async function addCategory() {
@@ -162,7 +182,7 @@
 					<div class="mt-8 border-t border-surface-200-800 pt-6">
 						<div class="flex items-center justify-between gap-3">
 							<h3 class="text-xl font-semibold">Categories</h3>
-							<p class="text-surface-700-300 text-sm">{categories.length} valid categor{categories.length === 1 ? 'y' : 'ies'}</p>
+							<p class="text-surface-700-300 text-sm">{categories.length} valid categor{categories.length === 1 ? 'y' : 'ies'}{categoryLoading ? ' loading…' : ''}</p>
 						</div>
 
 						{#if categoryError}
@@ -196,7 +216,7 @@
 									</div>
 								</article>
 							{:else}
-								<p class="text-surface-700-300 text-sm">No valid categories found.</p>
+								<p class="text-surface-700-300 text-sm">{categoryLoading ? 'Loading categories…' : 'No valid categories found.'}</p>
 							{/each}
 						</div>
 					</div>

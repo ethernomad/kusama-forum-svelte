@@ -618,23 +618,51 @@ export async function retractItem(api: ApiPromise, account: InjectedAccount, ite
 	await signAndFinalize(extrinsic as { signAndSend: Function }, account);
 }
 
-export async function loadForumCategories(params: { heliaNode: Helia; api: ApiPromise | null; forum: LoadedContent }): Promise<ForumCategory[]> {
-	const { heliaNode, api, forum } = params;
+function isValidForumCategory(entry: LoadedContent | null, forum: LoadedContent): entry is ForumCategory {
+	return (
+		entry?.contentType === 'category' &&
+		entry.ownerHex === forum.ownerHex &&
+		(entry.flags == null || (entry.flags & RETRACTED_ITEM_FLAGS) === 0)
+	);
+}
+
+async function loadForumCategoryIds(forum: LoadedContent): Promise<string[]> {
 	if (forum.contentType !== 'forum' || !forum.ownerHex) return [];
 	const response = await indexerRequest<{ decodedEvents?: DecodedEvent[] }>('acuity_getEvents', {
 		key: { type: 'Custom', value: { name: 'item_id', kind: 'bytes32', value: forum.itemIdHex } },
 		limit: 200
 	});
-	const categoryIds = new Set(
-		(response.decodedEvents ?? [])
-			.filter((entry) => entry.event.palletName === 'Content' && entry.event.eventName === 'PublishItem')
-			.map((entry) => String(entry.event.fields.item_id ?? entry.event.fields.itemId ?? ''))
-			.filter((itemId) => itemId && itemId !== forum.itemIdHex)
+	return [
+		...new Set(
+			(response.decodedEvents ?? [])
+				.filter((entry) => entry.event.palletName === 'Content' && entry.event.eventName === 'PublishItem')
+				.map((entry) => String(entry.event.fields.item_id ?? entry.event.fields.itemId ?? ''))
+				.filter((itemId) => itemId && itemId !== forum.itemIdHex)
+		)
+	];
+}
+
+export async function loadForumCategories(params: { heliaNode: Helia; api: ApiPromise | null; forum: LoadedContent }): Promise<ForumCategory[]> {
+	const { heliaNode, api, forum } = params;
+	const categories = await Promise.all((await loadForumCategoryIds(forum)).map((itemId) => loadContentById(heliaNode, itemId, api).catch(() => null)));
+	return categories.filter((entry): entry is ForumCategory => isValidForumCategory(entry, forum));
+}
+
+export async function loadForumCategoriesIncremental(params: {
+	heliaNode: Helia;
+	api: ApiPromise | null;
+	forum: LoadedContent;
+	onCategory: (category: ForumCategory) => void;
+}): Promise<ForumCategory[]> {
+	const { heliaNode, api, forum, onCategory } = params;
+	const categories: ForumCategory[] = [];
+	await Promise.all(
+		(await loadForumCategoryIds(forum)).map(async (itemId) => {
+			const entry = await loadContentById(heliaNode, itemId, api).catch(() => null);
+			if (!isValidForumCategory(entry, forum)) return;
+			categories.push(entry);
+			onCategory(entry);
+		})
 	);
-	const categories = await Promise.all([...categoryIds].map((itemId) => loadContentById(heliaNode, itemId, api).catch(() => null)));
-	return categories.filter((entry): entry is ForumCategory =>
-		entry?.contentType === 'category' &&
-		entry.ownerHex === forum.ownerHex &&
-		(entry.flags == null || (entry.flags & RETRACTED_ITEM_FLAGS) === 0)
-	);
+	return categories;
 }
