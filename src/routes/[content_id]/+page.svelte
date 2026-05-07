@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import CategoryForumPosts from '$lib/components/CategoryForumPosts.svelte';
 	import ForumCategories from '$lib/components/ForumCategories.svelte';
+	import PostCategories from '$lib/components/PostCategories.svelte';
 	import { ipfsDigestHexToCid, loadContentById, shortHex, type LoadedContent } from '$lib/services/content';
 	import { connections } from '$lib/services/connections.svelte';
 
@@ -43,6 +45,8 @@
 				return 'Forum';
 			case 'category':
 				return 'Category';
+			case 'forumPost':
+				return 'Forum post';
 			default:
 				return 'Unknown content';
 		}
@@ -92,6 +96,10 @@
 
 				{#if content.contentType === 'forum'}
 					<ForumCategories forum={content} />
+				{:else if content.contentType === 'category'}
+					<CategoryForumPosts category={content} />
+				{:else if content.contentType === 'forumPost' && content.latestLinks.length}
+					<PostCategories post={content} />
 				{/if}
 			</section>
 
