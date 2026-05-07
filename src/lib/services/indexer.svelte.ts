@@ -9,6 +9,19 @@ type CustomBytes32Key = {
 	};
 };
 
+export type DecodedIndexerEvent = {
+	blockNumber?: number;
+	eventIndex?: number;
+	blockTime?: number | string;
+	blockTimestamp?: number | string;
+	timestamp?: number | string;
+	event: {
+		palletName: string;
+		eventName: string;
+		fields: Record<string, unknown>;
+	};
+};
+
 type IndexerSubscriptionMessage = {
 	jsonrpc?: string;
 	method?: string;
@@ -18,6 +31,7 @@ type IndexerSubscriptionMessage = {
 			type?: string;
 			data?: unknown;
 			key?: CustomBytes32Key;
+			decodedEvent?: DecodedIndexerEvent | null;
 			[key: string]: unknown;
 		};
 	};
@@ -283,6 +297,23 @@ export function subscribeIndexerStatus(listener: (spans: IndexSpan[]) => void) {
 			statusSubscriptionId = null;
 		}
 	};
+}
+
+export function itemIdIndexerKey(itemIdHex: string): CustomBytes32Key {
+	return {
+		type: 'Custom',
+		value: {
+			name: 'item_id',
+			kind: 'bytes32',
+			value: itemIdHex.startsWith('0x') ? itemIdHex : `0x${itemIdHex}`
+		}
+	};
+}
+
+export function getSubscriptionDecodedEvent(message: IndexerSubscriptionMessage): DecodedIndexerEvent | null {
+	const result = message.params?.result;
+	if (result?.type !== 'event') return null;
+	return result.decodedEvent ?? null;
 }
 
 export function subscribeIndexerEvents(key: CustomBytes32Key, callback: (message: IndexerSubscriptionMessage) => void) {

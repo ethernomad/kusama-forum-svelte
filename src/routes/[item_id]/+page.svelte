@@ -16,6 +16,7 @@
 		type LoadedContent
 	} from '$lib/services/content';
 	import { connections } from '$lib/services/connections.svelte';
+	import { getSubscriptionDecodedEvent, itemIdIndexerKey, subscribeIndexerEvents } from '$lib/services/indexer.svelte';
 
 	let loading = $state(false);
 	let error = $state('');
@@ -23,12 +24,15 @@
 	let revisions: ContentRevisionMeta[] = $state([]);
 	let selectedRevisionId = $state<string>('');
 	let requestId = 0;
+	let refreshNonce = $state(0);
+	let commentsRefreshNonce = $state(0);
 
 	const itemId = $derived(page.params.item_id);
 	const canEdit = $derived(canEditContent(content, injectedAccounts.activeAccount));
 
 	$effect(() => {
 		void itemId;
+		void refreshNonce;
 		const heliaNode = connections.heliaNode;
 		if (!heliaNode || !itemId) return;
 
@@ -67,6 +71,23 @@
 		void itemId;
 		selectedRevisionId = '';
 		revisions = [];
+	});
+
+	$effect(() => {
+		if (!itemId) return;
+		const normalizedItemId = itemId.startsWith('0x') ? itemId : `0x${itemId}`;
+		const unsubscribe = subscribeIndexerEvents(itemIdIndexerKey(normalizedItemId), (message) => {
+			const decoded = getSubscriptionDecodedEvent(message);
+			if (decoded?.event.palletName !== 'Content') return;
+			if (decoded.event.eventName === 'PublishRevision') {
+				const viewingLatest = selectedRevisionId === '' || selectedRevisionId === String(content?.latestRevisionId ?? '');
+				if (viewingLatest) selectedRevisionId = '';
+				refreshNonce += 1;
+			} else if (decoded.event.eventName === 'PublishItem') {
+				commentsRefreshNonce += 1;
+			}
+		});
+		return unsubscribe;
 	});
 
 	function contentTypeLabel(value: LoadedContent | null): string {
@@ -170,7 +191,7 @@
 				{/if}
 
 				{#if content.contentType === 'forumPost' || content.contentType === 'comment'}
-					<Comments item={content} />
+					<Comments item={content} refreshNonce={commentsRefreshNonce} />
 				{/if}
 			</section>
 
