@@ -28,6 +28,7 @@ type ItemMessage = {
 const PROFILE_ITEM_FLAGS = 0x01;
 const PROFILE_CONTENT_TYPE_ID = 4;
 const FORUM_CONTENT_TYPE_ID = 5;
+const CATEGORY_CONTENT_TYPE_ID = 6;
 const LANGUAGE_MIXIN_ID = 0x9bc7a0e6;
 const TITLE_MIXIN_ID = 0x344f4812;
 const BODY_TEXT_MIXIN_ID = 0x2d382044;
@@ -35,6 +36,8 @@ const IMAGE_MIXIN_ID = 0x045eee8c;
 const PROFILE_MIXIN_ID = 0xbeef2144;
 const DEFAULT_LANGUAGE_TAG = 'en';
 const FORUM_ITEM_FLAGS = 0x00;
+const CATEGORY_ITEM_FLAGS = 0x02;
+const RETRACTED_ITEM_FLAGS = 0x04;
 const ITEM_ID_NAMESPACE = 1000;
 
 export type ForumDraft = {
@@ -42,11 +45,18 @@ export type ForumDraft = {
 	description: string;
 };
 
+export type CategoryDraft = {
+	title: string;
+	body: string;
+};
+
 export type LoadedContent = {
 	itemIdHex: string;
 	revisionIpfsHashHex: string | null;
-	contentType: 'profile' | 'forum' | 'unknown';
+	contentType: 'profile' | 'forum' | 'category' | 'unknown';
 	contentTypeId: number | null;
+	ownerHex: string | null;
+	flags: number | null;
 	title: string;
 	bodyText: string;
 	languageTag: string | null;
@@ -63,6 +73,10 @@ export type PreparedForumSave = {
 	itemPayload: Bytes;
 	revisionIpfsHashHex: string;
 	revisionIpfsHashBytes: Bytes;
+};
+
+export type ForumCategory = LoadedContent & {
+	contentType: 'category';
 };
 
 function u8a(bytes: Uint8Array): Bytes {
@@ -219,6 +233,21 @@ function findMixin(item: ItemMessage, mixinId: number): Bytes | null {
 
 function toHex(bytes: Uint8Array): string {
 	return `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+}
+
+export function accountAddressToHex(address: string): string {
+	return toHex(decodeAddress(address)).toLowerCase();
+}
+
+function accountIdToHex(value: unknown): string | null {
+	if (value == null) return null;
+	const text = String(value);
+	if (/^0x[0-9a-fA-F]{64}$/.test(text)) return text.toLowerCase();
+	try {
+		return accountAddressToHex(text);
+	} catch {
+		return null;
+	}
 }
 
 function hexToBytes(hex: string): Uint8Array {
@@ -412,17 +441,46 @@ async function fetchLatestRevisionHash(itemIdHex: string): Promise<string> {
 	return latest;
 }
 
-function detectContentType(contentTypeId: number | null): 'profile' | 'forum' | 'unknown' {
+function detectContentType(contentTypeId: number | null): 'profile' | 'forum' | 'category' | 'unknown' {
 	if (contentTypeId === PROFILE_CONTENT_TYPE_ID) return 'profile';
 	if (contentTypeId === FORUM_CONTENT_TYPE_ID) return 'forum';
+	if (contentTypeId === CATEGORY_CONTENT_TYPE_ID) return 'category';
 	return 'unknown';
 }
 
-export async function loadContentById(heliaNode: Helia, itemIdHex: string): Promise<LoadedContent> {
+async function fetchItemState(api: ApiPromise | null, itemIdHex: string): Promise<{ ownerHex: string | null; flags: number | null }> {
+	let ownerHex: string | null = null;
+	let flags: number | null = null;
+	if (api) {
+		const itemState = (api.query as Record<string, Record<string, (...args: unknown[]) => Promise<unknown>>>).content?.itemState;
+		if (itemState) {
+			const codec = await itemState(hexToBytes(itemIdHex));
+			const json = (codec as { toJSON?: () => unknown }).toJSON?.() as Record<string, unknown> | null | undefined;
+			const value = json && typeof json === 'object' && 'owner' in json ? json : null;
+			ownerHex = accountIdToHex(value?.owner);
+			flags = value?.flags == null ? null : Number(value.flags);
+		}
+	}
+
+	if (!ownerHex) {
+		const response = await indexerRequest<{ decodedEvents?: DecodedEvent[] }>('acuity_getEvents', {
+			key: { type: 'Custom', value: { name: 'item_id', kind: 'bytes32', value: itemIdHex } },
+			limit: 100
+		});
+		const publishItem = (response.decodedEvents ?? []).find((entry) => entry.event.palletName === 'Content' && entry.event.eventName === 'PublishItem');
+		ownerHex = accountIdToHex(publishItem?.event.fields.owner);
+		if (flags == null && publishItem?.event.fields.flags != null) flags = Number(publishItem.event.fields.flags);
+	}
+
+	return { ownerHex, flags };
+}
+
+export async function loadContentById(heliaNode: Helia, itemIdHex: string, api: ApiPromise | null = null): Promise<LoadedContent> {
 	const normalizedItemIdHex = itemIdHex.startsWith('0x') ? itemIdHex : `0x${itemIdHex}`;
 	const revisionIpfsHashHex = await fetchLatestRevisionHash(normalizedItemIdHex);
 	const itemBytes = await fetchIpfsDigestBytes(heliaNode, revisionIpfsHashHex);
 	const item = decodeItemMessage(itemBytes);
+	const state = await fetchItemState(api, normalizedItemIdHex);
 	const titlePayload = findMixin(item, TITLE_MIXIN_ID);
 	const bodyPayload = findMixin(item, BODY_TEXT_MIXIN_ID);
 	const languagePayload = findMixin(item, LANGUAGE_MIXIN_ID);
@@ -436,6 +494,8 @@ export async function loadContentById(heliaNode: Helia, itemIdHex: string): Prom
 		revisionIpfsHashHex,
 		contentType: detectContentType(contentTypeId),
 		contentTypeId,
+		ownerHex: state.ownerHex,
+		flags: state.flags,
 		title: titlePayload ? decodeTitleMixin(titlePayload).title : '',
 		bodyText: bodyPayload ? decodeBodyTextMixin(bodyPayload).bodyText : '',
 		languageTag: languagePayload ? decodeLanguageMixin(languagePayload).languageTag : null,
@@ -448,15 +508,19 @@ export async function loadContentById(heliaNode: Helia, itemIdHex: string): Prom
 	};
 }
 
-function encodeForumItem(draft: ForumDraft): Bytes {
+function encodeContentItem(contentTypeId: number, title: string, bodyText: string): Bytes {
 	return encodeItemMessage({
-		contentTypeId: FORUM_CONTENT_TYPE_ID,
+		contentTypeId,
 		mixinPayload: [
 			{ mixinId: LANGUAGE_MIXIN_ID, payload: encodeLanguageMixin(DEFAULT_LANGUAGE_TAG) },
-			{ mixinId: TITLE_MIXIN_ID, payload: encodeTitleMixin(draft.title) },
-			{ mixinId: BODY_TEXT_MIXIN_ID, payload: encodeBodyTextMixin(draft.description) }
+			{ mixinId: TITLE_MIXIN_ID, payload: encodeTitleMixin(title) },
+			{ mixinId: BODY_TEXT_MIXIN_ID, payload: encodeBodyTextMixin(bodyText) }
 		]
 	});
+}
+
+function encodeForumItem(draft: ForumDraft): Bytes {
+	return encodeContentItem(FORUM_CONTENT_TYPE_ID, draft.title, draft.description);
 }
 
 async function signAndFinalize(extrinsic: { signAndSend: Function }, account: InjectedAccount): Promise<void> {
@@ -523,4 +587,54 @@ export async function saveForum(params: {
 		itemIdHex: toHex(itemIdBytes),
 		revisionIpfsHashHex: resolved.revisionIpfsHashHex
 	};
+}
+
+export async function saveCategory(params: {
+	api: ApiPromise;
+	heliaNode: Helia;
+	account: InjectedAccount;
+	forumItemIdHex: string;
+	draft: CategoryDraft;
+}): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
+	const { api, heliaNode, account, forumItemIdHex, draft } = params;
+	const itemPayload = encodeContentItem(CATEGORY_CONTENT_TYPE_ID, draft.title, draft.body);
+	const revisionIpfsHashHex = await uploadIpfsDigest(heliaNode, itemPayload);
+	const nonce = crypto.getRandomValues(new Uint8Array(32));
+	const itemIdBytes = await deriveItemId(account.address, nonce);
+	const publishItem = (api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>).content.publishItem(
+		nonce,
+		[hexToBytes(forumItemIdHex)],
+		CATEGORY_ITEM_FLAGS,
+		[],
+		[],
+		hexToBytes(revisionIpfsHashHex)
+	);
+	await signAndFinalize(publishItem as { signAndSend: Function }, account);
+	return { itemIdHex: toHex(itemIdBytes), revisionIpfsHashHex };
+}
+
+export async function retractItem(api: ApiPromise, account: InjectedAccount, itemIdHex: string): Promise<void> {
+	const extrinsic = (api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>).content.retractItem(hexToBytes(itemIdHex));
+	await signAndFinalize(extrinsic as { signAndSend: Function }, account);
+}
+
+export async function loadForumCategories(params: { heliaNode: Helia; api: ApiPromise | null; forum: LoadedContent }): Promise<ForumCategory[]> {
+	const { heliaNode, api, forum } = params;
+	if (forum.contentType !== 'forum' || !forum.ownerHex) return [];
+	const response = await indexerRequest<{ decodedEvents?: DecodedEvent[] }>('acuity_getEvents', {
+		key: { type: 'Custom', value: { name: 'item_id', kind: 'bytes32', value: forum.itemIdHex } },
+		limit: 200
+	});
+	const categoryIds = new Set(
+		(response.decodedEvents ?? [])
+			.filter((entry) => entry.event.palletName === 'Content' && entry.event.eventName === 'PublishItem')
+			.map((entry) => String(entry.event.fields.item_id ?? entry.event.fields.itemId ?? ''))
+			.filter((itemId) => itemId && itemId !== forum.itemIdHex)
+	);
+	const categories = await Promise.all([...categoryIds].map((itemId) => loadContentById(heliaNode, itemId, api).catch(() => null)));
+	return categories.filter((entry): entry is ForumCategory =>
+		entry?.contentType === 'category' &&
+		entry.ownerHex === forum.ownerHex &&
+		(entry.flags == null || (entry.flags & RETRACTED_ITEM_FLAGS) === 0)
+	);
 }
