@@ -35,6 +35,7 @@ const PROFILE_CONTENT_TYPE_ID = 4;
 const FORUM_CONTENT_TYPE_ID = 5;
 const CATEGORY_CONTENT_TYPE_ID = 6;
 const FORUM_POST_CONTENT_TYPE_ID = 7;
+const COMMENT_CONTENT_TYPE_ID = 8;
 const LANGUAGE_MIXIN_ID = 0x9bc7a0e6;
 const TITLE_MIXIN_ID = 0x344f4812;
 const BODY_TEXT_MIXIN_ID = 0x2d382044;
@@ -44,6 +45,7 @@ const DEFAULT_LANGUAGE_TAG = 'en';
 const FORUM_ITEM_FLAGS = 0x00;
 const CATEGORY_ITEM_FLAGS = 0x02;
 const FORUM_POST_ITEM_FLAGS = REVISIONABLE_ITEM_FLAGS;
+const COMMENT_ITEM_FLAGS = REVISIONABLE_ITEM_FLAGS;
 const RETRACTED_ITEM_FLAGS = 0x04;
 const ITEM_ID_NAMESPACE = 1000;
 
@@ -59,6 +61,10 @@ export type CategoryDraft = {
 
 export type ForumPostDraft = {
 	title: string;
+	body: string;
+};
+
+export type CommentDraft = {
 	body: string;
 };
 
@@ -102,7 +108,7 @@ export type LoadedContent = {
 	revisionId: number | null;
 	revisionIpfsHashHex: string | null;
 	latestRevisionId: number | null;
-	contentType: 'profile' | 'forum' | 'category' | 'forumPost' | 'unknown';
+	contentType: 'profile' | 'forum' | 'category' | 'forumPost' | 'comment' | 'unknown';
 	contentTypeId: number | null;
 	ownerHex: string | null;
 	flags: number | null;
@@ -140,6 +146,14 @@ export type ForumCategory = LoadedContent & {
 
 export type ForumPost = LoadedContent & {
 	contentType: 'forumPost';
+};
+
+export type ForumComment = LoadedContent & {
+	contentType: 'comment';
+	parentItemIdHex: string;
+	publishBlockNumber: number;
+	publishEventIndex: number;
+	replies: ForumComment[];
 };
 
 function u8a(bytes: Uint8Array): Bytes {
@@ -481,6 +495,11 @@ async function indexerRequest<T>(_method: string, payload: Record<string, unknow
 }
 
 type DecodedEvent = {
+	blockNumber?: number;
+	eventIndex?: number;
+	blockTime?: number | string;
+	blockTimestamp?: number | string;
+	timestamp?: number | string;
 	event: {
 		palletName: string;
 		eventName: string;
@@ -653,16 +672,18 @@ export function contentTypeName(contentTypeId: number | null): string {
 	if (contentTypeId === FORUM_CONTENT_TYPE_ID) return 'Forum';
 	if (contentTypeId === CATEGORY_CONTENT_TYPE_ID) return 'Category';
 	if (contentTypeId === FORUM_POST_CONTENT_TYPE_ID) return 'Forum post';
+	if (contentTypeId === COMMENT_CONTENT_TYPE_ID) return 'Comment';
 	return 'Unknown content';
 }
 
 function detectContentType(
 	contentTypeId: number | null
-): 'profile' | 'forum' | 'category' | 'forumPost' | 'unknown' {
+): 'profile' | 'forum' | 'category' | 'forumPost' | 'comment' | 'unknown' {
 	if (contentTypeId === PROFILE_CONTENT_TYPE_ID) return 'profile';
 	if (contentTypeId === FORUM_CONTENT_TYPE_ID) return 'forum';
 	if (contentTypeId === CATEGORY_CONTENT_TYPE_ID) return 'category';
 	if (contentTypeId === FORUM_POST_CONTENT_TYPE_ID) return 'forumPost';
+	if (contentTypeId === COMMENT_CONTENT_TYPE_ID) return 'comment';
 	return 'unknown';
 }
 
@@ -756,7 +777,7 @@ export async function loadContentByItemId(
 
 function encodeContentItem(
 	contentTypeId: number,
-	title: string,
+	title: string | null,
 	bodyText: string,
 	languageTag = DEFAULT_LANGUAGE_TAG
 ): Bytes {
@@ -764,7 +785,7 @@ function encodeContentItem(
 		contentTypeId,
 		mixinPayload: [
 			{ mixinId: LANGUAGE_MIXIN_ID, payload: encodeLanguageMixin(languageTag) },
-			{ mixinId: TITLE_MIXIN_ID, payload: encodeTitleMixin(title) },
+			...(title == null ? [] : [{ mixinId: TITLE_MIXIN_ID, payload: encodeTitleMixin(title) }]),
 			{ mixinId: BODY_TEXT_MIXIN_ID, payload: encodeBodyTextMixin(bodyText) }
 		]
 	});
@@ -914,6 +935,32 @@ export async function saveForumPost(params: {
 	return { itemIdHex: toHex(itemIdBytes), revisionIpfsHashHex };
 }
 
+export async function saveComment(params: {
+	api: ApiPromise;
+	heliaNode: Helia;
+	account: InjectedAccount;
+	parentItemIdHex: string;
+	draft: CommentDraft;
+}): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
+	const { api, heliaNode, account, parentItemIdHex, draft } = params;
+	const itemPayload = encodeContentItem(COMMENT_CONTENT_TYPE_ID, null, draft.body);
+	const revisionIpfsHashHex = await uploadIpfsDigest(heliaNode, itemPayload);
+	const nonce = crypto.getRandomValues(new Uint8Array(32));
+	const itemIdBytes = await deriveItemId(account.address, nonce);
+	const publishItem = (
+		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
+	).content.publishItem(
+		nonce,
+		[hexToBytes(parentItemIdHex)],
+		COMMENT_ITEM_FLAGS,
+		[],
+		[],
+		hexToBytes(revisionIpfsHashHex)
+	);
+	await signAndFinalize(publishItem as { signAndSend: Function }, account);
+	return { itemIdHex: toHex(itemIdBytes), revisionIpfsHashHex };
+}
+
 export async function prepareContentRevision(params: {
 	heliaNode: Helia;
 	content: LoadedContent;
@@ -991,22 +1038,55 @@ function isValidForumCategory(
 	);
 }
 
+type PublishedChild = {
+	itemIdHex: string;
+	parentItemIdHex: string;
+	blockNumber: number;
+	eventIndex: number;
+	blockTime: number;
+};
+
+function eventOrderValue(entry: DecodedEvent): number {
+	const value = entry.blockTime ?? entry.blockTimestamp ?? entry.timestamp;
+	if (typeof value === 'number') return value;
+	if (typeof value === 'string') {
+		const parsed = Date.parse(value);
+		if (!Number.isNaN(parsed)) return parsed;
+		const numeric = Number(value);
+		if (!Number.isNaN(numeric)) return numeric;
+	}
+	return Number(entry.blockNumber ?? 0);
+}
+
+async function loadPublishedChildren(parentItemIdHex: string, limit = 500): Promise<PublishedChild[]> {
+	const normalizedParent = parentItemIdHex.toLowerCase();
+	const response = await indexerRequest<{ decodedEvents?: DecodedEvent[] }>('acuity_getEvents', {
+		key: { type: 'Custom', value: { name: 'item_id', kind: 'bytes32', value: parentItemIdHex } },
+		limit
+	});
+	const children = new Map<string, PublishedChild>();
+	for (const entry of response.decodedEvents ?? []) {
+		if (entry.event.palletName !== 'Content' || entry.event.eventName !== 'PublishItem') continue;
+		const itemIdHex = normalizeItemId(entry.event.fields.item_id ?? entry.event.fields.itemId);
+		if (!itemIdHex || itemIdHex.toLowerCase() === normalizedParent) continue;
+		const parents = extractItemIds(entry.event.fields.parents).map((parent) => parent.toLowerCase());
+		if (!parents.includes(normalizedParent)) continue;
+		children.set(itemIdHex.toLowerCase(), {
+			itemIdHex,
+			parentItemIdHex,
+			blockNumber: Number(entry.blockNumber ?? 0),
+			eventIndex: Number(entry.eventIndex ?? 0),
+			blockTime: eventOrderValue(entry)
+		});
+	}
+	return [...children.values()].sort(
+		(a, b) => a.blockTime - b.blockTime || a.blockNumber - b.blockNumber || a.eventIndex - b.eventIndex
+	);
+}
+
 async function loadForumCategoryIds(forum: LoadedContent): Promise<string[]> {
 	if (forum.contentType !== 'forum' || !forum.ownerHex) return [];
-	const response = await indexerRequest<{ decodedEvents?: DecodedEvent[] }>('acuity_getEvents', {
-		key: { type: 'Custom', value: { name: 'item_id', kind: 'bytes32', value: forum.itemIdHex } },
-		limit: 200
-	});
-	return [
-		...new Set(
-			(response.decodedEvents ?? [])
-				.filter(
-					(entry) => entry.event.palletName === 'Content' && entry.event.eventName === 'PublishItem'
-				)
-				.map((entry) => String(entry.event.fields.item_id ?? entry.event.fields.itemId ?? ''))
-				.filter((itemId) => itemId && itemId !== forum.itemIdHex)
-		)
-	];
+	return (await loadPublishedChildren(forum.itemIdHex, 200)).map((entry) => entry.itemIdHex);
 }
 
 export async function loadForumCategories(params: {
@@ -1089,4 +1169,31 @@ export async function loadCategoryForumPostsIncremental(params: {
 		})
 	);
 	return posts;
+}
+
+function isValidComment(entry: LoadedContent | null): entry is LoadedContent & { contentType: 'comment' } {
+	return entry?.contentType === 'comment' && (entry.flags == null || (entry.flags & RETRACTED_ITEM_FLAGS) === 0);
+}
+
+export async function loadCommentTree(params: {
+	heliaNode: Helia;
+	api: ApiPromise | null;
+	parentItemIdHex: string;
+}): Promise<ForumComment[]> {
+	const { heliaNode, api, parentItemIdHex } = params;
+	const children = await loadPublishedChildren(parentItemIdHex, 1000);
+	const comments = await Promise.all(
+		children.map(async (child) => {
+			const entry = await loadContentByItemId(heliaNode, child.itemIdHex, api).catch(() => null);
+			if (!isValidComment(entry)) return null;
+			return {
+				...entry,
+				parentItemIdHex,
+				publishBlockNumber: child.blockNumber,
+				publishEventIndex: child.eventIndex,
+				replies: await loadCommentTree({ heliaNode, api, parentItemIdHex: child.itemIdHex })
+			};
+		})
+	);
+	return comments.filter((entry): entry is ForumComment => !!entry);
 }

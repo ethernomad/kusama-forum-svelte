@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import CategoryForumPosts from '$lib/components/CategoryForumPosts.svelte';
 	import ContentTabs from '$lib/components/ContentTabs.svelte';
+	import Comments from '$lib/components/Comments.svelte';
 	import ForumCategories from '$lib/components/ForumCategories.svelte';
 	import PostCategories from '$lib/components/PostCategories.svelte';
 	import { injectedAccounts } from '$lib/services/accounts.svelte';
@@ -78,6 +79,8 @@
 				return 'Category';
 			case 'forumPost':
 				return 'Forum post';
+			case 'comment':
+				return 'Comment';
 			default:
 				return 'Unknown content';
 		}
@@ -164,6 +167,10 @@
 					<CategoryForumPosts category={content} />
 				{:else if content.contentType === 'forumPost' && content.latestLinks.length}
 					<PostCategories post={content} />
+				{/if}
+
+				{#if content.contentType === 'forumPost' || content.contentType === 'comment'}
+					<Comments item={content} />
 				{/if}
 			</section>
 
