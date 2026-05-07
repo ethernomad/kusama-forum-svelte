@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import CategoryForumPosts from '$lib/components/CategoryForumPosts.svelte';
+	import ContentTabs from '$lib/components/ContentTabs.svelte';
 	import ForumCategories from '$lib/components/ForumCategories.svelte';
 	import PostCategories from '$lib/components/PostCategories.svelte';
 	import { injectedAccounts } from '$lib/services/accounts.svelte';
@@ -99,13 +100,8 @@
 	</header>
 
 	{#if content}
-		<nav class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-surface-200-800 bg-surface-50-950 p-2 text-sm">
-			<div class="flex gap-2">
-				<a class="variant-filled btn" href={`/${itemId}`}>View</a>
-				{#if canEdit}
-					<a class="variant-outline btn" href={`/${itemId}/edit`}>Edit</a>
-				{/if}
-			</div>
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<ContentTabs {itemId} {canEdit} active="view" />
 			{#if revisions.length > 1}
 				<label class="flex items-center gap-2 text-xs text-surface-700-300">
 					Revision
@@ -120,7 +116,7 @@
 					</select>
 				</label>
 			{/if}
-		</nav>
+		</div>
 	{/if}
 
 	{#if loading}

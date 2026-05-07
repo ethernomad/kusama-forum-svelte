@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import ContentTabs from '$lib/components/ContentTabs.svelte';
 	import { formatShortAddress, injectedAccounts } from '$lib/services/accounts.svelte';
 	import {
 		canEditContent,
@@ -144,10 +145,7 @@
 	</header>
 
 	{#if content}
-		<nav class="flex gap-2 rounded-xl border border-surface-200-800 bg-surface-50-950 p-2 text-sm">
-			<a class="variant-outline btn" href={`/${itemId}`}>View</a>
-			{#if canEdit}<a class="variant-filled btn" href={`/${itemId}/edit`}>Edit</a>{/if}
-		</nav>
+		<ContentTabs {itemId} {canEdit} active="edit" />
 	{/if}
 
 	{#if error}

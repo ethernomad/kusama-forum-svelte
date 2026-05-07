@@ -19,7 +19,7 @@ type ProtoReader = InstanceType<typeof Reader>;
 type ProtoWriter = InstanceType<typeof Writer>;
 type Bytes = Uint8Array<ArrayBufferLike>;
 
-type MixinPayload = {
+export type MixinPayload = {
 	mixinId: number;
 	payload: Bytes;
 };
@@ -71,6 +71,30 @@ export type ContentRevisionMeta = {
 	revisionId: number;
 	ipfsHash: string;
 	links: string[];
+	mentions: string[];
+};
+
+export type ContentItemDebug = {
+	itemIdHex: string;
+	ownerHex: string | null;
+	flags: number | null;
+	latestRevisionId: number | null;
+	parents: string[];
+	revisions: ContentRevisionMeta[];
+};
+
+export type DecodedMixinDebug = {
+	mixinId: number;
+	name: string;
+	data: unknown;
+	rawHex: string;
+};
+
+export type RevisionDebug = ContentRevisionMeta & {
+	cid: string;
+	contentTypeId: number;
+	contentTypeName: string;
+	mixins: DecodedMixinDebug[];
 };
 
 export type LoadedContent = {
@@ -272,6 +296,10 @@ function findMixin(item: ItemMessage, mixinId: number): Bytes | null {
 
 function toHex(bytes: Uint8Array): string {
 	return `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+}
+
+export function bytesToHex(bytes: Uint8Array): string {
+	return toHex(bytes);
 }
 
 export function accountAddressToHex(address: string): string {
@@ -513,6 +541,14 @@ function extractItemIds(value: unknown): string[] {
 	return value.map(normalizeItemId).filter((entry): entry is string => !!entry);
 }
 
+function extractAccountIds(value: unknown): string[] {
+	if (!Array.isArray(value)) {
+		const single = accountIdToHex(value);
+		return single ? [single] : [];
+	}
+	return value.map(accountIdToHex).filter((entry): entry is string => !!entry);
+}
+
 export async function fetchContentRevisions(itemIdHex: string): Promise<ContentRevisionMeta[]> {
 	const response = await indexerRequest<{ decodedEvents?: DecodedEvent[] }>('acuity_getEvents', {
 		key: { type: 'Custom', value: { name: 'item_id', kind: 'bytes32', value: itemIdHex } },
@@ -532,7 +568,8 @@ export async function fetchContentRevisions(itemIdHex: string): Promise<ContentR
 			return {
 				revisionId: Number(fields.revision_id ?? fields.revisionId ?? 0),
 				ipfsHash: String(fields.ipfs_hash ?? fields.ipfsHash ?? ''),
-				links: extractItemIds(fields.links)
+				links: extractItemIds(fields.links),
+				mentions: extractAccountIds(fields.mentions)
 			};
 		})
 		.filter((entry) => entry.ipfsHash);
@@ -545,6 +582,78 @@ async function fetchLatestRevisionMeta(itemIdHex: string): Promise<ContentRevisi
 	if (!latest)
 		throw new Error('No indexed Content::PublishRevision event was found for this item.');
 	return latest;
+}
+
+function mixinName(mixinId: number): string {
+	if (mixinId === LANGUAGE_MIXIN_ID) return 'Language';
+	if (mixinId === TITLE_MIXIN_ID) return 'Title';
+	if (mixinId === BODY_TEXT_MIXIN_ID) return 'Body text';
+	if (mixinId === IMAGE_MIXIN_ID) return 'Image';
+	if (mixinId === PROFILE_MIXIN_ID) return 'Profile';
+	return 'Unknown mixin';
+}
+
+function decodeMixinDebug(mixin: MixinPayload): DecodedMixinDebug {
+	let data: unknown;
+	try {
+		if (mixin.mixinId === LANGUAGE_MIXIN_ID) data = decodeLanguageMixin(mixin.payload);
+		else if (mixin.mixinId === TITLE_MIXIN_ID) data = decodeTitleMixin(mixin.payload);
+		else if (mixin.mixinId === BODY_TEXT_MIXIN_ID) data = decodeBodyTextMixin(mixin.payload);
+		else if (mixin.mixinId === PROFILE_MIXIN_ID) data = decodeProfileMixin(mixin.payload);
+		else if (mixin.mixinId === IMAGE_MIXIN_ID) data = decodeImageMixin(mixin.payload);
+		else data = { rawHex: toHex(mixin.payload) };
+	} catch (error) {
+		data = { error: error instanceof Error ? error.message : String(error) };
+	}
+	return { mixinId: mixin.mixinId, name: mixinName(mixin.mixinId), data, rawHex: toHex(mixin.payload) };
+}
+
+export async function loadContentItemDebug(
+	heliaNode: Helia,
+	itemIdHex: string,
+	api: ApiPromise | null = null
+): Promise<ContentItemDebug> {
+	const normalizedItemIdHex = itemIdHex.startsWith('0x') ? itemIdHex : `0x${itemIdHex}`;
+	const [state, revisions, response] = await Promise.all([
+		fetchItemState(api, normalizedItemIdHex),
+		fetchContentRevisions(normalizedItemIdHex),
+		indexerRequest<{ decodedEvents?: DecodedEvent[] }>('acuity_getEvents', {
+			key: { type: 'Custom', value: { name: 'item_id', kind: 'bytes32', value: normalizedItemIdHex } },
+			limit: 100
+		})
+	]);
+	const publishItem = (response.decodedEvents ?? []).find((entry) => {
+		const eventItemId = normalizeItemId(entry.event.fields.item_id ?? entry.event.fields.itemId);
+		return entry.event.palletName === 'Content' && entry.event.eventName === 'PublishItem' && eventItemId?.toLowerCase() === normalizedItemIdHex.toLowerCase();
+	});
+	return {
+		itemIdHex: normalizedItemIdHex,
+		ownerHex: state.ownerHex,
+		flags: state.flags,
+		latestRevisionId: state.revisionId,
+		parents: extractItemIds(publishItem?.event.fields.parents),
+		revisions
+	};
+}
+
+export async function loadRevisionDebug(heliaNode: Helia, revision: ContentRevisionMeta): Promise<RevisionDebug> {
+	const itemBytes = await fetchIpfsDigestBytes(heliaNode, revision.ipfsHash);
+	const item = decodeItemMessage(itemBytes);
+	return {
+		...revision,
+		cid: ipfsDigestHexToCid(revision.ipfsHash),
+		contentTypeId: item.contentTypeId,
+		contentTypeName: contentTypeName(item.contentTypeId),
+		mixins: item.mixinPayload.map(decodeMixinDebug)
+	};
+}
+
+export function contentTypeName(contentTypeId: number | null): string {
+	if (contentTypeId === PROFILE_CONTENT_TYPE_ID) return 'Profile';
+	if (contentTypeId === FORUM_CONTENT_TYPE_ID) return 'Forum';
+	if (contentTypeId === CATEGORY_CONTENT_TYPE_ID) return 'Category';
+	if (contentTypeId === FORUM_POST_CONTENT_TYPE_ID) return 'Forum post';
+	return 'Unknown content';
 }
 
 function detectContentType(
