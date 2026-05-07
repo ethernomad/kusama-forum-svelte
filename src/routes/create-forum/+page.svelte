@@ -1,16 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import {
-		formatAccountLabel,
-		formatShortAddress,
-		injectedAccounts,
-		loadInjectedAccounts,
-		selectInjectedAccount
-	} from '$lib/services/accounts.svelte';
-	import { getAccountBalanceLabel } from '$lib/services/balances.svelte';
+	import { formatShortAddress, injectedAccounts } from '$lib/services/accounts.svelte';
 	import { connections } from '$lib/services/connections.svelte';
 	import { prepareForumSave, saveForum, type ForumDraft, type PreparedForumSave } from '$lib/services/content';
-	import { AppBar, Menu } from '@skeletonlabs/skeleton-svelte';
 
 	let draft: ForumDraft = $state({
 		title: '',
@@ -101,88 +93,7 @@
 	}
 </script>
 
-<AppBar class="px-6">
-	<div class="flex items-center justify-between gap-4 py-4">
-		<div class="flex items-center gap-3">
-			<a href="/" class="text-sm font-semibold">Kusama Forum</a>
-			<span class="text-surface-700-300 text-sm">Create forum</span>
-		</div>
-
-		<Menu positioning={{ placement: 'bottom-end' }}>
-			<Menu.Trigger
-				class="border-surface-200-800 bg-surface-50-950 hover:bg-surface-100-900 inline-flex min-w-56 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors"
-			>
-				<div class="min-w-0 flex-1">
-					<div class="flex items-center justify-between gap-3">
-						<p class="truncate font-medium">{formatAccountLabel(injectedAccounts.activeAccount)}</p>
-						{#if injectedAccounts.activeAccount}
-							<span class="text-surface-700-300 shrink-0 text-xs font-medium">
-								{getAccountBalanceLabel(injectedAccounts.activeAccount.address)}
-							</span>
-						{/if}
-					</div>
-					<p class="text-surface-700-300 truncate text-xs">
-						{#if injectedAccounts.activeAccount}
-							{formatShortAddress(injectedAccounts.activeAccount.address)}
-						{:else}
-							{injectedAccounts.status}
-						{/if}
-					</p>
-				</div>
-				<span aria-hidden="true" class="text-xs">▾</span>
-			</Menu.Trigger>
-
-			<Menu.Positioner>
-				<Menu.Content class="border-surface-200-800 bg-surface-50-950 w-80 rounded-xl border p-1 shadow-xl">
-					<div class="px-3 py-2">
-						<p class="text-xs font-medium">Injected accounts</p>
-						<p class="text-surface-700-300 mt-1 text-xs">{injectedAccounts.status}</p>
-					</div>
-
-					<Menu.Separator class="bg-surface-200-800 my-1 h-px border-0" />
-
-					{#if injectedAccounts.accounts.length > 0}
-						{#each injectedAccounts.accounts as account (account.address)}
-							<Menu.Item
-								value={account.address}
-								onclick={() => selectInjectedAccount(account.address)}
-								class="hover:bg-surface-100-900 flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2 text-sm outline-none"
-							>
-								<span class="w-4 text-center text-xs">
-									{account.address === injectedAccounts.activeAddress ? '✓' : ''}
-								</span>
-								<div class="min-w-0 flex-1">
-									<div class="flex items-center justify-between gap-3">
-										<p class="truncate font-medium">{formatAccountLabel(account)}</p>
-										<span class="text-surface-700-300 shrink-0 text-xs font-medium">
-											{getAccountBalanceLabel(account.address)}
-										</span>
-									</div>
-									<p class="text-surface-700-300 truncate text-xs">
-										{formatShortAddress(account.address)}
-									</p>
-								</div>
-							</Menu.Item>
-						{/each}
-					{:else}
-						<div class="px-3 py-2 text-sm">Install or unlock the Polkadot.js extension to continue.</div>
-					{/if}
-
-					<Menu.Separator class="bg-surface-200-800 my-1 h-px border-0" />
-					<Menu.Item
-						value="refresh-accounts"
-						onclick={() => loadInjectedAccounts()}
-						class="hover:bg-surface-100-900 cursor-pointer rounded-lg px-3 py-2 text-sm outline-none"
-					>
-						Refresh accounts
-					</Menu.Item>
-				</Menu.Content>
-			</Menu.Positioner>
-		</Menu>
-	</div>
-</AppBar>
-
-<main class="mx-auto max-w-4xl p-6">
+<div class="max-w-4xl space-y-6">
 	<header class="mb-6 flex flex-wrap items-start justify-between gap-4 rounded-xl border border-dashed border-surface-200-800 p-6">
 		<div>
 			<p class="text-surface-700-300 text-sm font-medium">Top-level content item</p>
@@ -192,7 +103,7 @@
 			</p>
 		</div>
 		<div class="flex gap-3">
-			<a class="btn variant-outline" href="/">Profile</a>
+			<a class="btn variant-outline" href="/my-profile">My profile</a>
 		</div>
 	</header>
 
@@ -223,7 +134,7 @@
 							Create forum
 						{/if}
 					</button>
-					<a class="btn variant-outline" href="/">Cancel</a>
+					<a class="btn variant-outline" href="/my-profile">Cancel</a>
 				</div>
 			</div>
 
@@ -240,4 +151,4 @@
 			</aside>
 		</div>
 	</section>
-</main>
+</div>

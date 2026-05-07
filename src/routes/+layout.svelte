@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import './layout.css';
+	import AppHeader from '$lib/components/AppHeader.svelte';
+	import StatusSidebar from '$lib/components/StatusSidebar.svelte';
 	import { loadInjectedAccounts } from '$lib/services/accounts.svelte';
 	import { startAccountBalanceWatcher } from '$lib/services/balances.svelte';
 	import { startAppConnections } from '$lib/services/connections.svelte';
@@ -20,4 +22,16 @@
 	});
 </script>
 
-{@render children()}
+<AppHeader />
+
+<main class="mx-auto max-w-7xl p-6">
+	<div class="grid gap-6 xl:grid-cols-[18rem_minmax(0,1fr)]">
+		<aside>
+			<StatusSidebar />
+		</aside>
+
+		<div class="min-w-0">
+			{@render children()}
+		</div>
+	</div>
+</main>

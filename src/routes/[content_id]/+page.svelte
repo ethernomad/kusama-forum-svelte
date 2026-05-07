@@ -46,15 +46,15 @@
 	}
 </script>
 
-<main class="mx-auto max-w-4xl p-6">
-	<header class="mb-6 flex flex-wrap items-start justify-between gap-4 rounded-xl border border-dashed border-surface-200-800 p-6">
+<div class="max-w-4xl space-y-6">
+	<header class="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-dashed border-surface-200-800 p-6">
 		<div>
 			<p class="text-surface-700-300 text-sm font-medium">Content viewer</p>
 			<h1 class="mt-1 text-2xl font-semibold">{contentTypeLabel(content)}</h1>
 			<p class="text-surface-700-300 mt-2 text-sm break-all">{contentId}</p>
 		</div>
 		<div class="flex gap-3">
-			<a class="btn variant-outline" href="/">Profile</a>
+			<a class="btn variant-outline" href="/my-profile">My profile</a>
 			<a class="btn variant-outline" href="/create-forum">Create forum</a>
 		</div>
 	</header>
@@ -120,4 +120,4 @@
 			</aside>
 		</div>
 	{/if}
-</main>
+</div>
