@@ -67,9 +67,17 @@ export type ContentRevisionDraft = {
 	body: string;
 };
 
+export type ContentRevisionMeta = {
+	revisionId: number;
+	ipfsHash: string;
+	links: string[];
+};
+
 export type LoadedContent = {
 	itemIdHex: string;
+	revisionId: number | null;
 	revisionIpfsHashHex: string | null;
+	latestRevisionId: number | null;
 	contentType: 'profile' | 'forum' | 'category' | 'forumPost' | 'unknown';
 	contentTypeId: number | null;
 	ownerHex: string | null;
@@ -505,9 +513,7 @@ function extractItemIds(value: unknown): string[] {
 	return value.map(normalizeItemId).filter((entry): entry is string => !!entry);
 }
 
-async function fetchLatestRevisionMeta(
-	itemIdHex: string
-): Promise<{ ipfsHash: string; links: string[]; revisionId: number }> {
+export async function fetchContentRevisions(itemIdHex: string): Promise<ContentRevisionMeta[]> {
 	const response = await indexerRequest<{ decodedEvents?: DecodedEvent[] }>('acuity_getEvents', {
 		key: { type: 'Custom', value: { name: 'item_id', kind: 'bytes32', value: itemIdHex } },
 		limit: 100
@@ -531,7 +537,11 @@ async function fetchLatestRevisionMeta(
 		})
 		.filter((entry) => entry.ipfsHash);
 	entries.sort((a, b) => b.revisionId - a.revisionId);
-	const latest = entries[0];
+	return entries;
+}
+
+async function fetchLatestRevisionMeta(itemIdHex: string): Promise<ContentRevisionMeta> {
+	const latest = (await fetchContentRevisions(itemIdHex))[0];
 	if (!latest)
 		throw new Error('No indexed Content::PublishRevision event was found for this item.');
 	return latest;
@@ -550,9 +560,10 @@ function detectContentType(
 async function fetchItemState(
 	api: ApiPromise | null,
 	itemIdHex: string
-): Promise<{ ownerHex: string | null; flags: number | null }> {
+): Promise<{ ownerHex: string | null; flags: number | null; revisionId: number | null }> {
 	let ownerHex: string | null = null;
 	let flags: number | null = null;
+	let revisionId: number | null = null;
 	if (api) {
 		const itemState = (
 			api.query as Record<string, Record<string, (...args: unknown[]) => Promise<unknown>>>
@@ -566,6 +577,7 @@ async function fetchItemState(
 			const value = json && typeof json === 'object' && 'owner' in json ? json : null;
 			ownerHex = accountIdToHex(value?.owner);
 			flags = value?.flags == null ? null : Number(value.flags);
+			revisionId = value?.revision_id == null && value?.revisionId == null ? null : Number(value.revision_id ?? value.revisionId);
 		}
 	}
 
@@ -582,20 +594,25 @@ async function fetchItemState(
 			flags = Number(publishItem.event.fields.flags);
 	}
 
-	return { ownerHex, flags };
+	return { ownerHex, flags, revisionId };
 }
 
 export async function loadContentByItemId(
 	heliaNode: Helia,
 	itemIdHex: string,
-	api: ApiPromise | null = null
+	api: ApiPromise | null = null,
+	revisionId: number | null = null
 ): Promise<LoadedContent> {
 	const normalizedItemIdHex = itemIdHex.startsWith('0x') ? itemIdHex : `0x${itemIdHex}`;
-	const latestRevision = await fetchLatestRevisionMeta(normalizedItemIdHex);
-	const revisionIpfsHashHex = latestRevision.ipfsHash;
+	const state = await fetchItemState(api, normalizedItemIdHex);
+	const revisions = await fetchContentRevisions(normalizedItemIdHex);
+	const selectedRevision =
+		revisionId == null ? revisions[0] : revisions.find((entry) => entry.revisionId === revisionId);
+	if (!selectedRevision)
+		throw new Error('No indexed Content::PublishRevision event was found for this item revision.');
+	const revisionIpfsHashHex = selectedRevision.ipfsHash;
 	const itemBytes = await fetchIpfsDigestBytes(heliaNode, revisionIpfsHashHex);
 	const item = decodeItemMessage(itemBytes);
-	const state = await fetchItemState(api, normalizedItemIdHex);
 	const titlePayload = findMixin(item, TITLE_MIXIN_ID);
 	const bodyPayload = findMixin(item, BODY_TEXT_MIXIN_ID);
 	const languagePayload = findMixin(item, LANGUAGE_MIXIN_ID);
@@ -606,7 +623,9 @@ export async function loadContentByItemId(
 
 	return {
 		itemIdHex: normalizedItemIdHex,
+		revisionId: selectedRevision.revisionId,
 		revisionIpfsHashHex,
+		latestRevisionId: state.revisionId,
 		contentType: detectContentType(contentTypeId),
 		contentTypeId,
 		ownerHex: state.ownerHex,
@@ -622,7 +641,7 @@ export async function loadContentByItemId(
 		contentLoaded: true,
 		contentError: null,
 		rawMixinIds: item.mixinPayload.map((entry) => entry.mixinId),
-		latestLinks: latestRevision.links
+		latestLinks: selectedRevision.links
 	};
 }
 

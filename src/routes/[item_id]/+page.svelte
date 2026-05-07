@@ -6,9 +6,11 @@
 	import { injectedAccounts } from '$lib/services/accounts.svelte';
 	import {
 		canEditContent,
+		fetchContentRevisions,
 		ipfsDigestHexToCid,
 		loadContentByItemId,
 		shortHex,
+		type ContentRevisionMeta,
 		type LoadedContent
 	} from '$lib/services/content';
 	import { connections } from '$lib/services/connections.svelte';
@@ -16,6 +18,8 @@
 	let loading = $state(false);
 	let error = $state('');
 	let content: LoadedContent | null = $state(null);
+	let revisions: ContentRevisionMeta[] = $state([]);
+	let selectedRevisionId = $state<string>('');
 	let requestId = 0;
 
 	const itemId = $derived(page.params.item_id);
@@ -30,10 +34,22 @@
 		loading = true;
 		error = '';
 		content = null;
-		void loadContentByItemId(heliaNode, itemId, connections.api)
-			.then((value) => {
+		const revisionId = selectedRevisionId === '' ? null : Number(selectedRevisionId);
+		void loadContentByItemId(heliaNode, itemId, connections.api, revisionId)
+			.then(async (value) => {
 				if (currentRequestId !== requestId) return;
 				content = value;
+				const normalizedItemId = itemId.startsWith('0x') ? itemId : `0x${itemId}`;
+				const chainLatestRevisionId = value.latestRevisionId;
+				if (chainLatestRevisionId != null && chainLatestRevisionId > 0) {
+					revisions = await fetchContentRevisions(normalizedItemId);
+					if (currentRequestId !== requestId) return;
+					if (selectedRevisionId === '' && value.revisionId != null) {
+						selectedRevisionId = String(value.revisionId);
+					}
+				} else {
+					revisions = [];
+				}
 			})
 			.catch((value) => {
 				if (currentRequestId !== requestId) return;
@@ -43,6 +59,12 @@
 				if (currentRequestId !== requestId) return;
 				loading = false;
 			});
+	});
+
+	$effect(() => {
+		void itemId;
+		selectedRevisionId = '';
+		revisions = [];
 	});
 
 	function contentTypeLabel(value: LoadedContent | null): string {
@@ -77,10 +99,26 @@
 	</header>
 
 	{#if content}
-		<nav class="flex gap-2 rounded-xl border border-surface-200-800 bg-surface-50-950 p-2 text-sm">
-			<a class="variant-filled btn" href={`/${itemId}`}>View</a>
-			{#if canEdit}
-				<a class="variant-outline btn" href={`/${itemId}/edit`}>Edit</a>
+		<nav class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-surface-200-800 bg-surface-50-950 p-2 text-sm">
+			<div class="flex gap-2">
+				<a class="variant-filled btn" href={`/${itemId}`}>View</a>
+				{#if canEdit}
+					<a class="variant-outline btn" href={`/${itemId}/edit`}>Edit</a>
+				{/if}
+			</div>
+			{#if revisions.length > 1}
+				<label class="flex items-center gap-2 text-xs text-surface-700-300">
+					Revision
+					<select class="select w-44" bind:value={selectedRevisionId} aria-label="Select revision">
+						{#each revisions as revision}
+							<option value={String(revision.revisionId)}>
+								Revision {revision.revisionId}{revision.revisionId === content.latestRevisionId
+									? ' (latest)'
+									: ''}
+							</option>
+						{/each}
+					</select>
+				</label>
 			{/if}
 		</nav>
 	{/if}
@@ -141,7 +179,8 @@
 					<code class="mt-1 block text-xs break-all">{content.itemIdHex}</code>
 				</div>
 				<div>
-					<p class="text-xs text-surface-700-300 uppercase">Latest revision</p>
+					<p class="text-xs text-surface-700-300 uppercase">Selected revision</p>
+					<p class="mt-1">{content.revisionId ?? '—'}{content.revisionId === content.latestRevisionId ? ' (latest)' : ''}</p>
 					<code class="mt-1 block text-xs break-all"
 						>{ipfsDigestHexToCid(content.revisionIpfsHashHex)}</code
 					>
