@@ -3,7 +3,7 @@
 	import CategoryForumPosts from '$lib/components/CategoryForumPosts.svelte';
 	import ForumCategories from '$lib/components/ForumCategories.svelte';
 	import PostCategories from '$lib/components/PostCategories.svelte';
-	import { ipfsDigestHexToCid, loadContentById, shortHex, type LoadedContent } from '$lib/services/content';
+	import { ipfsDigestHexToCid, loadContentByItemId, shortHex, type LoadedContent } from '$lib/services/content';
 	import { connections } from '$lib/services/connections.svelte';
 
 	let loading = $state(false);
@@ -11,18 +11,18 @@
 	let content: LoadedContent | null = $state(null);
 	let requestId = 0;
 
-	const contentId = $derived(page.params.content_id);
+	const itemId = $derived(page.params.item_id);
 
 	$effect(() => {
-		void contentId;
+		void itemId;
 		const heliaNode = connections.heliaNode;
-		if (!heliaNode || !contentId) return;
+		if (!heliaNode || !itemId) return;
 
 		const currentRequestId = ++requestId;
 		loading = true;
 		error = '';
 		content = null;
-		void loadContentById(heliaNode, contentId, connections.api)
+		void loadContentByItemId(heliaNode, itemId, connections.api)
 			.then((value) => {
 				if (currentRequestId !== requestId) return;
 				content = value;
@@ -59,7 +59,7 @@
 		<div>
 			<p class="text-surface-700-300 text-sm font-medium">Content viewer</p>
 			<h1 class="mt-1 text-2xl font-semibold">{contentTypeLabel(content)}</h1>
-			<p class="text-surface-700-300 mt-2 text-sm break-all">{contentId}</p>
+			<p class="text-surface-700-300 mt-2 text-sm break-all">{itemId}</p>
 		</div>
 		<div class="flex gap-3">
 			<a class="btn variant-outline" href="/my-profile">My profile</a>

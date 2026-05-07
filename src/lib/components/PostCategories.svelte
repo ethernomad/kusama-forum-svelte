@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { loadContentById, type LoadedContent } from '$lib/services/content';
+	import { loadContentByItemId, type LoadedContent } from '$lib/services/content';
 	import { connections } from '$lib/services/connections.svelte';
 
 	let { post }: { post: LoadedContent } = $props();
@@ -23,7 +23,7 @@
 
 		void Promise.all(
 			post.latestLinks.map(async (itemIdHex) => {
-				const category = await loadContentById(heliaNode, itemIdHex, connections.api).catch(() => null);
+				const category = await loadContentByItemId(heliaNode, itemIdHex, connections.api).catch(() => null);
 				return {
 					itemIdHex,
 					title: category?.contentType === 'category' && category.title.trim() ? category.title : itemIdHex

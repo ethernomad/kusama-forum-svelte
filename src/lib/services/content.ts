@@ -531,7 +531,7 @@ async function fetchItemState(api: ApiPromise | null, itemIdHex: string): Promis
 	return { ownerHex, flags };
 }
 
-export async function loadContentById(heliaNode: Helia, itemIdHex: string, api: ApiPromise | null = null): Promise<LoadedContent> {
+export async function loadContentByItemId(heliaNode: Helia, itemIdHex: string, api: ApiPromise | null = null): Promise<LoadedContent> {
 	const normalizedItemIdHex = itemIdHex.startsWith('0x') ? itemIdHex : `0x${itemIdHex}`;
 	const latestRevision = await fetchLatestRevisionMeta(normalizedItemIdHex);
 	const revisionIpfsHashHex = latestRevision.ipfsHash;
@@ -726,7 +726,7 @@ async function loadForumCategoryIds(forum: LoadedContent): Promise<string[]> {
 
 export async function loadForumCategories(params: { heliaNode: Helia; api: ApiPromise | null; forum: LoadedContent }): Promise<ForumCategory[]> {
 	const { heliaNode, api, forum } = params;
-	const categories = await Promise.all((await loadForumCategoryIds(forum)).map((itemId) => loadContentById(heliaNode, itemId, api).catch(() => null)));
+	const categories = await Promise.all((await loadForumCategoryIds(forum)).map((itemId) => loadContentByItemId(heliaNode, itemId, api).catch(() => null)));
 	return categories.filter((entry): entry is ForumCategory => isValidForumCategory(entry, forum));
 }
 
@@ -740,7 +740,7 @@ export async function loadForumCategoriesIncremental(params: {
 	const categories: ForumCategory[] = [];
 	await Promise.all(
 		(await loadForumCategoryIds(forum)).map(async (itemId) => {
-			const entry = await loadContentById(heliaNode, itemId, api).catch(() => null);
+			const entry = await loadContentByItemId(heliaNode, itemId, api).catch(() => null);
 			if (!isValidForumCategory(entry, forum)) return;
 			categories.push(entry);
 			onCategory(entry);
@@ -783,7 +783,7 @@ export async function loadCategoryForumPostsIncremental(params: {
 	const posts: ForumPost[] = [];
 	await Promise.all(
 		(await loadCategoryPostIds(category)).map(async (itemId) => {
-			const entry = await loadContentById(heliaNode, itemId, api).catch(() => null);
+			const entry = await loadContentByItemId(heliaNode, itemId, api).catch(() => null);
 			if (!isValidForumPost(entry, category.itemIdHex)) return;
 			posts.push(entry);
 			onPost(entry);
