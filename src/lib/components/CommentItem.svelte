@@ -34,10 +34,12 @@
 		<span>Block {comment.publishBlockNumber || '—'}</span>
 	</div>
 	<div class="mt-3 text-sm whitespace-pre-wrap">{comment.bodyText}</div>
-	<Reactions
-		itemIdHex={comment.itemIdHex}
-		revisionId={comment.latestRevisionId ?? comment.revisionId}
-	/>
+	{#if comment.latestRevisionId != null || comment.revisionId != null}
+		<Reactions
+			itemIdHex={comment.itemIdHex}
+			revisionId={comment.latestRevisionId ?? comment.revisionId ?? 0}
+		/>
+	{/if}
 	<CommentForm parentItemIdHex={comment.itemIdHex} onPublished={onChanged} label="Reply" />
 	{#if comment.replies.length}
 		<div class="mt-4 space-y-3 border-l border-surface-300-700 pl-4">

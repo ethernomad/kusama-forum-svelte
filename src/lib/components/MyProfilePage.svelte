@@ -4,12 +4,10 @@
 	import {
 		loadProfileContent,
 		loadProfileMetadata,
-		prepareProfileSave,
 		saveProfile,
 		ipfsDigestHexToCid,
 		shortHex,
 		type LoadedProfile,
-		type PreparedProfileSave,
 		type ProfileDraft
 	} from '$lib/services/profile';
 
@@ -39,13 +37,10 @@
 	let selectedImagePreview: string | null = $state(null);
 	let loadingProfile = $state(false);
 	let savingProfile = $state(false);
-	let preparingProfileSave = $state(false);
-	let preparedProfileSave: PreparedProfileSave | null = $state(null);
 	let profileError = $state('');
 	let profileNotice = $state('');
 	let refreshTick = $state(0);
 	let profileLoadRequest = 0;
-	let prepareProfileRequest = 0;
 
 	const activeAccount = $derived(injectedAccounts.activeAccount);
 	const activeAddress = $derived(activeAccount?.address ?? '');
@@ -138,51 +133,6 @@
 		});
 	}
 
-	$effect(() => {
-		void draft.name;
-		void draft.bio;
-		void draft.location;
-		void draft.accountType;
-		void selectedImageFile;
-		void existingImagePayload;
-		void profile?.itemIdHex;
-		const heliaNode = connections.heliaNode;
-		if (!heliaNode) {
-			preparedProfileSave = null;
-			preparingProfileSave = false;
-			return;
-		}
-
-		const requestId = ++prepareProfileRequest;
-		preparingProfileSave = true;
-		preparedProfileSave = null;
-		const timer = setTimeout(() => {
-			void prepareProfileSave({
-				heliaNode,
-				draft: { ...draft },
-				existingItemIdHex: profile?.itemIdHex ?? null,
-				existingImagePayload,
-				selectedImageFile
-			})
-				.then((prepared) => {
-					if (requestId !== prepareProfileRequest) return;
-					preparedProfileSave = prepared;
-				})
-				.catch(() => {
-					if (requestId !== prepareProfileRequest) return;
-					preparedProfileSave = null;
-				})
-				.finally(() => {
-					if (requestId !== prepareProfileRequest) return;
-					preparingProfileSave = false;
-				});
-		}, 300);
-
-		return () => {
-			clearTimeout(timer);
-		};
-	});
-
 	async function submitProfile() {
 		profileError = '';
 		profileNotice = '';
@@ -199,13 +149,14 @@
 			profileError = 'Start the in-browser Helia node before saving a profile.';
 			return;
 		}
-		if (preparingProfileSave || !preparedProfileSave) {
-			profileNotice = 'Preparing IPFS payload in the background. Transaction signing will be available as soon as preparation completes.';
+		if (!connections.ipfsHasRequiredLocalConnection) {
+			profileError = 'Publishing requires a connection to the local IPFS pinner on one of the default local swarm addresses.';
 			return;
 		}
 
 		savingProfile = true;
 		try {
+			profileNotice = 'Publishing to IPFS, waiting for local pinner ACK, then opening the transaction...';
 			const saved = await saveProfile({
 				api: connections.api,
 				heliaNode: connections.heliaNode,
@@ -213,11 +164,9 @@
 				draft,
 				existingItemIdHex: profile?.itemIdHex ?? null,
 				existingImagePayload,
-				selectedImageFile,
-				prepared: preparedProfileSave
+				selectedImageFile
 			});
 			applyProfile(saved);
-			preparedProfileSave = null;
 			profileNotice = saved.itemIdHex === profile?.itemIdHex ? 'Profile revision published successfully.' : 'Profile created successfully.';
 		} catch (error) {
 			profileError = error instanceof Error ? error.message : String(error);
@@ -302,7 +251,7 @@
 					</label>
 
 					<div class="flex flex-wrap gap-3">
-						<button class="btn variant-filled-primary" onclick={submitProfile} disabled={!activeAccount || !connections.api || !connections.heliaNode || savingProfile}>
+						<button class="btn variant-filled-primary" onclick={submitProfile} disabled={!activeAccount || !connections.api || !connections.heliaNode || !connections.ipfsHasRequiredLocalConnection || savingProfile}>
 							{#if savingProfile}
 								Saving...
 							{:else if profile?.exists}

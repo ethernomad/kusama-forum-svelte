@@ -19,8 +19,12 @@
 
 	async function publish() {
 		if (!connections.api || !connections.heliaNode || !injectedAccounts.activeAccount) return;
-		saving = true;
 		error = '';
+		if (!connections.ipfsHasRequiredLocalConnection) {
+			error = 'Publishing requires a connection to the local IPFS pinner on one of the default local swarm addresses.';
+			return;
+		}
+		saving = true;
 		try {
 			await saveComment({
 				api: connections.api,
@@ -46,7 +50,7 @@
 			<textarea class="mt-2 min-h-24 w-full rounded-lg border-surface-200-800 bg-surface-50-950" bind:value={body} placeholder="Comment body" disabled={saving} required></textarea>
 		</label>
 		{#if error}<p class="text-sm text-red-300">{error}</p>{/if}
-		<button class="btn variant-filled" type="submit" disabled={saving || !body.trim()}>{saving ? 'Publishing…' : 'Publish comment'}</button>
+		<button class="btn variant-filled" type="submit" disabled={saving || !connections.ipfsHasRequiredLocalConnection || !body.trim()}>{saving ? 'Publishing…' : 'Publish comment'}</button>
 	</form>
 {:else}
 	<p class="mt-3 text-sm text-surface-700-300">Connect an account to comment.</p>

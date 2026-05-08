@@ -2,52 +2,17 @@
 	import { goto } from '$app/navigation';
 	import { formatShortAddress, injectedAccounts } from '$lib/services/accounts.svelte';
 	import { connections } from '$lib/services/connections.svelte';
-	import { prepareForumSave, saveForum, type ForumDraft, type PreparedForumSave } from '$lib/services/content';
+	import { saveForum, type ForumDraft } from '$lib/services/content';
 
 	let draft: ForumDraft = $state({
 		title: '',
 		description: ''
 	});
 	let saving = $state(false);
-	let preparing = $state(false);
-	let prepared: PreparedForumSave | null = $state(null);
 	let error = $state('');
 	let notice = $state('');
-	let prepareRequest = 0;
 
 	const activeAccount = $derived(injectedAccounts.activeAccount);
-
-	$effect(() => {
-		void draft.title;
-		void draft.description;
-		const heliaNode = connections.heliaNode;
-		if (!heliaNode) {
-			prepared = null;
-			preparing = false;
-			return;
-		}
-
-		const requestId = ++prepareRequest;
-		preparing = true;
-		prepared = null;
-		const timer = setTimeout(() => {
-			void prepareForumSave({ heliaNode, draft: { ...draft } })
-				.then((value) => {
-					if (requestId !== prepareRequest) return;
-					prepared = value;
-				})
-				.catch(() => {
-					if (requestId !== prepareRequest) return;
-					prepared = null;
-				})
-				.finally(() => {
-					if (requestId !== prepareRequest) return;
-					preparing = false;
-				});
-		}, 300);
-
-		return () => clearTimeout(timer);
-	});
 
 	async function submitForum() {
 		error = '';
@@ -65,23 +30,23 @@
 			error = 'Start the in-browser Helia node before creating a forum.';
 			return;
 		}
+		if (!connections.ipfsHasRequiredLocalConnection) {
+			error = 'Publishing requires a connection to the local IPFS pinner on one of the default local swarm addresses.';
+			return;
+		}
 		if (!draft.title.trim()) {
 			error = 'Forum title is required.';
 			return;
 		}
-		if (preparing || !prepared) {
-			notice = 'Preparing IPFS payload in the background. Try again in a moment.';
-			return;
-		}
 
 		saving = true;
+		notice = 'Publishing to IPFS, waiting for local pinner ACK, then opening the transaction...';
 		try {
 			const saved = await saveForum({
 				api: connections.api,
 				heliaNode: connections.heliaNode,
 				account: activeAccount,
-				draft,
-				prepared
+				draft
 			});
 			notice = 'Forum created successfully. Redirecting...';
 			await goto(`/${saved.itemIdHex}`);
@@ -127,7 +92,7 @@
 				</label>
 
 				<div class="flex flex-wrap gap-3">
-					<button class="btn variant-filled-primary" onclick={submitForum} disabled={!activeAccount || !connections.api || !connections.heliaNode || saving}>
+					<button class="btn variant-filled-primary" onclick={submitForum} disabled={!activeAccount || !connections.api || !connections.heliaNode || !connections.ipfsHasRequiredLocalConnection || saving}>
 						{#if saving}
 							Creating...
 						{:else}
@@ -146,7 +111,7 @@
 				</div>
 				<div class="text-surface-700-300 space-y-1 text-xs">
 					<p>Author: {activeAccount ? formatShortAddress(activeAccount.address) : 'No account selected'}</p>
-					<p>{preparing ? 'Preparing IPFS revision…' : prepared ? 'IPFS revision ready.' : 'Waiting for input…'}</p>
+					<p>{connections.ipfsHasRequiredLocalConnection ? 'Ready to publish through the local IPFS pinner.' : 'Connect to the local IPFS pinner before publishing.'}</p>
 				</div>
 			</aside>
 		</div>

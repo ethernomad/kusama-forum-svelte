@@ -12,7 +12,7 @@ type ProtoWriter = InstanceType<typeof Writer>;
 
 import type { InjectedAccount } from './accounts.svelte';
 import { getIndexedEvents } from './indexer.svelte';
-import { beginIpfsProvide, completeIpfsProvide, failIpfsProvide } from './ipfs-provide-status.svelte';
+import { publishBytesToIpfsWithAck } from './ipfs-publish';
 const PROFILE_ITEM_FLAGS = 0x01;
 const PROFILE_CONTENT_TYPE_ID = 4;
 const FORUM_CONTENT_TYPE_ID = 5;
@@ -400,27 +400,8 @@ function multihashBytesToCid(multihashBytes: Uint8Array): CID {
 	return CID.createV0(createDigest(0x12, digest.digest));
 }
 
-function provideCidInBackground(heliaNode: Helia, cid: CID): void {
-	const cidText = cid.toString();
-	beginIpfsProvide(cidText);
-	void heliaNode.routing
-		.provide(cid)
-		.then(() => {
-			completeIpfsProvide(cidText);
-		})
-		.catch((error) => {
-			failIpfsProvide(cidText, error);
-			console.error('Background IPFS provide failed for CID', cidText, error);
-		});
-}
-
 async function addIpfs(heliaNode: Helia, bytes: Uint8Array): Promise<CID> {
-	const fs = unixfs(heliaNode);
-	const cid = await fs.addBytes(bytes, {
-		cidVersion: 0,
-		rawLeaves: false
-	});
-	provideCidInBackground(heliaNode, cid);
+	const { cid } = await publishBytesToIpfsWithAck(heliaNode, bytes);
 	return cid;
 }
 

@@ -48,8 +48,13 @@
 		if (!connections.api || !connections.heliaNode || !injectedAccounts.activeAccount) return;
 		error = '';
 		notice = '';
+		if (!connections.ipfsHasRequiredLocalConnection) {
+			error = 'Publishing requires a connection to the local IPFS pinner on one of the default local swarm addresses.';
+			return;
+		}
 		saving = true;
 		try {
+			notice = 'Publishing to IPFS, waiting for local pinner ACK, then opening the transaction...';
 			const post = await saveForumPost({
 				api: connections.api,
 				heliaNode: connections.heliaNode,
@@ -84,7 +89,7 @@
 			<h4 class="font-semibold">Create post</h4>
 			<input class="w-full rounded-lg border-surface-200-800 bg-surface-50-950" bind:value={draft.title} placeholder="Post title" disabled={saving} required />
 			<textarea class="min-h-32 w-full rounded-lg border-surface-200-800 bg-surface-50-950" bind:value={draft.body} placeholder="Post body" disabled={saving} required></textarea>
-			<button class="btn variant-filled" type="submit" disabled={saving || !draft.title.trim() || !draft.body.trim()}>{saving ? 'Publishing…' : 'Publish post'}</button>
+			<button class="btn variant-filled" type="submit" disabled={saving || !connections.ipfsHasRequiredLocalConnection || !draft.title.trim() || !draft.body.trim()}>{saving ? 'Publishing…' : 'Publish post'}</button>
 		</form>
 	{:else}
 		<p class="text-surface-700-300 mt-4 text-sm">Connect an account to create a post.</p>

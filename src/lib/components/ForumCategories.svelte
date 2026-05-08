@@ -59,8 +59,13 @@
 		if (!connections.api || !connections.heliaNode || !injectedAccounts.activeAccount) return;
 		categoryError = '';
 		categoryNotice = '';
+		if (!connections.ipfsHasRequiredLocalConnection) {
+			categoryError = 'Publishing requires a connection to the local IPFS pinner on one of the default local swarm addresses.';
+			return;
+		}
 		categorySaving = true;
 		try {
+			categoryNotice = 'Publishing to IPFS, waiting for local pinner ACK, then opening the transaction...';
 			await saveCategory({
 				api: connections.api,
 				heliaNode: connections.heliaNode,
@@ -113,7 +118,7 @@
 			<h4 class="font-semibold">Add category</h4>
 			<input class="w-full rounded-lg border-surface-200-800 bg-surface-50-950" bind:value={categoryDraft.title} placeholder="Category title" disabled={categorySaving} required />
 			<textarea class="min-h-24 w-full rounded-lg border-surface-200-800 bg-surface-50-950" bind:value={categoryDraft.body} placeholder="Category body" disabled={categorySaving}></textarea>
-			<button class="btn variant-filled" type="submit" disabled={categorySaving || !categoryDraft.title.trim()}>{categorySaving ? 'Publishing…' : 'Publish category'}</button>
+			<button class="btn variant-filled" type="submit" disabled={categorySaving || !connections.ipfsHasRequiredLocalConnection || !categoryDraft.title.trim()}>{categorySaving ? 'Publishing…' : 'Publish category'}</button>
 		</form>
 	{/if}
 

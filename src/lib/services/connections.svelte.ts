@@ -13,6 +13,11 @@ import { ApiPromise, WsProvider } from '@polkadot/api';
 import { createHelia, type Helia } from 'helia';
 import { createLibp2p } from 'libp2p';
 
+import {
+	DEFAULT_LOCAL_IPFS_MULTIADDRS,
+	hasDefaultLocalIpfsConnection
+} from './ipfs-local';
+
 type GlobalHeliaState = typeof globalThis & {
 	__kusamaForumHeliaNode?: Helia | null;
 	__kusamaForumHeliaNodePromise?: Promise<Helia> | null;
@@ -35,11 +40,6 @@ const DEFAULT_GLOBAL_IPFS_BOOTSTRAP_MULTIADDRS = [
 	'/dns/sg1.bootstrap.libp2p.io/tcp/443/wss/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt',
 	'/dns/sv15.bootstrap.libp2p.io/tcp/443/wss/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN'
 ] as const;
-const DEFAULT_LOCAL_IPFS_MULTIADDRS = [
-	'/ip4/127.0.0.1/tcp/4002/ws/p2p/12D3KooWPp5C2RJQvTKRfTiwSgKxme9HcUY9zUt354RGpgb5zMBq',
-	'/ip6/::1/tcp/4002/ws/p2p/12D3KooWPp5C2RJQvTKRfTiwSgKxme9HcUY9zUt354RGpgb5zMBq'
-] as const;
-
 function configuredGlobalBootstrapMultiaddrs(): string[] {
 	const configured = import.meta.env.VITE_IPFS_BOOTSTRAP_ADDRS?.split(',')
 		.map((value: string) => value.trim())
@@ -84,6 +84,7 @@ type ConnectionsState = {
 	ipfsConnectedAddresses: string[];
 	ipfsLastLocalDialError: string;
 	ipfsConnections: number;
+	ipfsHasRequiredLocalConnection: boolean;
 	heliaNode: Helia | null;
 };
 
@@ -109,6 +110,7 @@ export const connections = $state<ConnectionsState>({
 	ipfsConnectedAddresses: [],
 	ipfsLastLocalDialError: '',
 	ipfsConnections: 0,
+	ipfsHasRequiredLocalConnection: false,
 	heliaNode: null
 });
 
@@ -201,6 +203,7 @@ function updateIpfsStatus(node: Helia): void {
 	const localBootstrapMultiaddrs = configuredLocalBootstrapMultiaddrs();
 	const localPeerIds = localBootstrapMultiaddrs.map((addr) => addr.split('/p2p/')[1] ?? '').filter(Boolean);
 	const localConnected = allConnections.some((connection) => localPeerIds.includes(connection.remotePeer?.toString() ?? ''));
+	const hasRequiredLocalConnection = hasDefaultLocalIpfsConnection(node);
 	const connectedAddresses = new Set(allConnections.map((connection) => connection.remoteAddr?.toString?.() ?? '').filter(Boolean));
 
 	for (const connection of allConnections) {
@@ -215,6 +218,7 @@ function updateIpfsStatus(node: Helia): void {
 	}
 
 	connections.ipfsConnections = connectionCount;
+	connections.ipfsHasRequiredLocalConnection = hasRequiredLocalConnection;
 	connections.ipfsMultiaddrs = node.libp2p.getMultiaddrs().map((addr: { toString(): string }) => addr.toString());
 	connections.ipfsSwarmAddresses = [...DEFAULT_LOCAL_IPFS_MULTIADDRS];
 	connections.ipfsConnectedAddresses = [...connectedAddresses].sort();

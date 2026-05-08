@@ -6,24 +6,19 @@
 	import {
 		canEditContent,
 		loadContentByItemId,
-		prepareContentRevision,
 		publishContentRevision,
 		type ContentRevisionDraft,
-		type LoadedContent,
-		type PreparedContentRevision
+		type LoadedContent
 	} from '$lib/services/content';
 	import { connections } from '$lib/services/connections.svelte';
 
 	let loading = $state(false);
 	let saving = $state(false);
-	let preparing = $state(false);
 	let error = $state('');
 	let notice = $state('');
 	let content: LoadedContent | null = $state(null);
 	let draft: ContentRevisionDraft = $state({ title: '', body: '' });
-	let prepared: PreparedContentRevision | null = $state(null);
 	let loadRequest = 0;
-	let prepareRequest = 0;
 
 	const itemId = $derived(page.params.item_id);
 	const activeAccount = $derived(injectedAccounts.activeAccount);
@@ -58,40 +53,6 @@
 			});
 	});
 
-	$effect(() => {
-		void draft.title;
-		void draft.body;
-		void content;
-		const heliaNode = connections.heliaNode;
-		if (!heliaNode || !content || !canEdit) {
-			prepared = null;
-			preparing = false;
-			return;
-		}
-
-		const currentContent = content;
-		const requestId = ++prepareRequest;
-		preparing = true;
-		prepared = null;
-		const timer = setTimeout(() => {
-			void prepareContentRevision({ heliaNode, content: currentContent, draft: { ...draft } })
-				.then((value) => {
-					if (requestId !== prepareRequest) return;
-					prepared = value;
-				})
-				.catch(() => {
-					if (requestId !== prepareRequest) return;
-					prepared = null;
-				})
-				.finally(() => {
-					if (requestId !== prepareRequest) return;
-					preparing = false;
-				});
-		}, 300);
-
-		return () => clearTimeout(timer);
-	});
-
 	async function submitRevision() {
 		error = '';
 		notice = '';
@@ -103,24 +64,24 @@
 			error = 'Connect to the chain and start Helia before publishing.';
 			return;
 		}
-		if (!draft.title.trim()) {
-			error = 'Title is required.';
+		if (!connections.ipfsHasRequiredLocalConnection) {
+			error = 'Publishing requires a connection to the local IPFS pinner on one of the default local swarm addresses.';
 			return;
 		}
-		if (preparing || !prepared) {
-			notice = 'Preparing IPFS payload in the background. Try again in a moment.';
+		if (!draft.title.trim()) {
+			error = 'Title is required.';
 			return;
 		}
 
 		saving = true;
 		try {
+			notice = 'Publishing to IPFS, waiting for local pinner ACK, then opening the transaction...';
 			await publishContentRevision({
 				api: connections.api,
 				heliaNode: connections.heliaNode,
 				account: activeAccount,
 				content,
-				draft,
-				prepared
+				draft
 			});
 			notice = 'Revision published. Redirecting...';
 			await goto(`/${content.itemIdHex}`);
@@ -205,7 +166,7 @@
 					<button
 						class="variant-filled-primary btn"
 						onclick={submitRevision}
-						disabled={!activeAccount || !connections.api || !connections.heliaNode || saving}
+						disabled={!activeAccount || !connections.api || !connections.heliaNode || !connections.ipfsHasRequiredLocalConnection || saving}
 					>
 						{saving ? 'Publishing...' : 'Publish new revision'}
 					</button>
@@ -215,11 +176,9 @@
 				<p class="text-xs text-surface-700-300">
 					Author: {activeAccount
 						? formatShortAddress(activeAccount.address)
-						: 'No account selected'} · {preparing
-						? 'Preparing IPFS revision…'
-						: prepared
-							? 'IPFS revision ready.'
-							: 'Waiting for input…'}
+						: 'No account selected'} · {connections.ipfsHasRequiredLocalConnection
+						? 'Ready to publish through the local IPFS pinner.'
+						: 'Connect to the local IPFS pinner before publishing.'}
 				</p>
 			</div>
 		</section>

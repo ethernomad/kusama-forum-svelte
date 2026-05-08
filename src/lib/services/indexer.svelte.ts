@@ -1,6 +1,6 @@
-type IndexSpan = { start: number; end: number };
+export type IndexSpan = { start: number; end: number };
 
-type CustomBytes32Key = {
+export type CustomBytes32Key = {
 	type: 'Custom';
 	value: {
 		name: string;
@@ -40,7 +40,7 @@ export type DecodedIndexerEvent = {
 	};
 };
 
-type IndexerSubscriptionMessage = {
+export type IndexerSubscriptionMessage = {
 	jsonrpc?: string;
 	method?: string;
 	params?: {
@@ -384,4 +384,3 @@ export function subscribeIndexerEvents(
 	};
 }
 
-export type { CustomBytes32Key, CustomCompositeKey, IndexSpan, IndexerSubscriptionMessage };

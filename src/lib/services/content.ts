@@ -8,11 +8,7 @@ import { cryptoWaitReady, decodeAddress } from '@polkadot/util-crypto';
 
 import type { InjectedAccount } from './accounts.svelte';
 import { getIndexedEvents } from './indexer.svelte';
-import {
-	beginIpfsProvide,
-	completeIpfsProvide,
-	failIpfsProvide
-} from './ipfs-provide-status.svelte';
+import { publishBytesToIpfsWithAck } from './ipfs-publish';
 
 const { Reader, Writer } = protobuf;
 type ProtoReader = InstanceType<typeof Reader>;
@@ -393,32 +389,8 @@ async function fetchIpfsDigestBytes(heliaNode: Helia, ipfsHashHex: string): Prom
 	return concatBytes(...chunks);
 }
 
-function provideCidInBackground(heliaNode: Helia, cid: CID): void {
-	const cidText = cid.toString();
-	beginIpfsProvide(cidText);
-	void heliaNode.routing
-		.provide(cid)
-		.then(() => {
-			completeIpfsProvide(cidText);
-		})
-		.catch((error) => {
-			failIpfsProvide(cidText, error);
-			console.error('Background IPFS provide failed for CID', cidText, error);
-		});
-}
-
-async function addIpfs(heliaNode: Helia, bytes: Uint8Array): Promise<CID> {
-	const fs = unixfs(heliaNode);
-	const cid = await fs.addBytes(bytes, {
-		cidVersion: 0,
-		rawLeaves: false
-	});
-	provideCidInBackground(heliaNode, cid);
-	return cid;
-}
-
 async function uploadIpfsDigest(heliaNode: Helia, bytes: Uint8Array): Promise<string> {
-	const cid = await addIpfs(heliaNode, bytes);
+	const { cid } = await publishBytesToIpfsWithAck(heliaNode, bytes);
 	return toHex(cid.multihash.digest);
 }
 
