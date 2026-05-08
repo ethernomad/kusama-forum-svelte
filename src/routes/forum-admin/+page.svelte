@@ -121,27 +121,19 @@
 		{:else}
 			<section class="space-y-4">
 				{#each forums as forum (forum.itemIdHex)}
-					<article class="card p-5">
-						<div class="flex flex-wrap items-start justify-between gap-4">
-							<div class="min-w-0">
-								<h2 class="text-lg font-semibold">
-									{forum.title || 'Untitled forum'}
-								</h2>
-								<p class="text-surface-700-300 mt-2 text-sm whitespace-pre-wrap">
-									{forum.bodyText || 'No description.'}
-								</p>
-								<code class="text-surface-700-300 mt-3 block text-xs break-all">
-									{forum.itemIdHex}
-								</code>
-							</div>
-
-							<div class="flex flex-wrap gap-2">
-								<a class="btn variant-outline" href={resolve(`/item_id/${forum.itemIdHex}`)}>
-									Open
-								</a>
-							</div>
+					<a
+						class="card block p-5 transition hover:border-primary-500/50 hover:bg-surface-100/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+						href={resolve(`/item_id/${forum.itemIdHex}`)}
+					>
+						<div class="min-w-0">
+							<h2 class="text-lg font-semibold">
+								{forum.title || 'Untitled forum'}
+							</h2>
+							<p class="text-surface-700-300 mt-2 text-sm whitespace-pre-wrap">
+								{forum.bodyText || 'No description.'}
+							</p>
 						</div>
-					</article>
+					</a>
 				{/each}
 			</section>
 		{/if}

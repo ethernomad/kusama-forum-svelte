@@ -875,7 +875,7 @@ A quick map of the most important files:
 
 - `src/lib/services/content.ts` — generic content encoding/decoding/load/save
 - `src/lib/services/profile.ts` — profile-specific content flow
-- `src/routes/forum-admin/+page.svelte` — forum admin page backed by account-content storage
+- `src/routes/forum-admin/+page.svelte` — forum admin page backed by account-content storage; each forum row links directly to its forum page and keeps item IDs hidden from the list
 - `src/lib/services/reactions.ts` — reaction load/save logic
 - `src/lib/services/chain-signing.ts` — generic extension signing helper
 
