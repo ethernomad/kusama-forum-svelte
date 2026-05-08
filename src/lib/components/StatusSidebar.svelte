@@ -1,6 +1,41 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
+	import { Navigation } from '@skeletonlabs/skeleton-svelte';
 	import AccountSelector from '$lib/components/AccountSelector.svelte';
 	import { connections } from '$lib/services/connections.svelte';
+
+	type MenuHref = '/my-profile' | '/item_id' | '/create-forum';
+
+	type MenuItem = {
+		href?: MenuHref;
+		label: string;
+		description: string;
+		action?: () => void;
+	};
+
+	const menuItems: MenuItem[] = [
+		{
+			href: '/my-profile',
+			label: 'My profile',
+			description: 'Edit your account profile and avatar'
+		},
+		{
+			href: '/item_id',
+			label: 'Item ID',
+			description: 'Inspect any item by its on-chain ID'
+		},
+		{
+			href: '/create-forum',
+			label: 'Create forum',
+			description: 'Publish a new top-level forum'
+		},
+		{
+			label: 'Refresh page',
+			description: 'Reload the app and reconnect services',
+			action: () => location.reload()
+		}
+	];
 
 	const isConnected = (status: string) =>
 		status === 'Connected' || status.startsWith('Running in browser') || status.startsWith('Connected to global IPFS');
@@ -9,14 +44,56 @@
 <div class="space-y-6 xl:sticky xl:top-6 xl:self-start">
 	<AccountSelector />
 
-	<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-4">
-		<div class="space-y-2">
-			<a class="btn variant-outline w-full justify-start" href="/my-profile">My profile</a>
-			<a class="btn variant-outline w-full justify-start" href="/item_id">Item ID</a>
-			<a class="btn variant-outline w-full justify-start" href="/create-forum">Create forum</a>
-			<button class="btn variant-outline w-full justify-start" type="button" onclick={() => location.reload()}>Refresh page</button>
-		</div>
-	</section>
+	<Navigation
+		layout="sidebar"
+		class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-2 shadow-sm"
+	>
+		<Navigation.Header class="px-3 pb-2 pt-1">
+			<p class="text-xs font-medium uppercase tracking-wide text-surface-700-300">Menu</p>
+			<h2 class="mt-1 text-sm font-semibold">Forum workspace</h2>
+		</Navigation.Header>
+
+		<Navigation.Content>
+			<Navigation.Group class="space-y-1">
+				{#each menuItems as item (item.href ?? item.label)}
+					{#if item.href}
+						<Navigation.TriggerAnchor
+							href={resolve(item.href)}
+							aria-current={page.url.pathname === item.href ? 'page' : undefined}
+							class={[
+								'block rounded-lg border px-3 py-3 transition-colors',
+								page.url.pathname === item.href
+									? 'border-primary-500/30 bg-primary-500/10'
+									: 'border-transparent hover:bg-surface-100-900'
+							]}
+						>
+							<div class="flex items-start justify-between gap-3">
+								<div class="min-w-0">
+									<p class="text-sm font-medium">{item.label}</p>
+									<p class="text-surface-700-300 mt-1 text-xs">{item.description}</p>
+								</div>
+								<span class="text-surface-700-300 text-xs">→</span>
+							</div>
+						</Navigation.TriggerAnchor>
+					{:else}
+						<button
+							type="button"
+							class="hover:bg-surface-100-900 block w-full rounded-lg border border-transparent px-3 py-3 text-left transition-colors"
+							onclick={item.action}
+						>
+							<div class="flex items-start justify-between gap-3">
+								<div class="min-w-0">
+									<p class="text-sm font-medium">{item.label}</p>
+									<p class="text-surface-700-300 mt-1 text-xs">{item.description}</p>
+								</div>
+								<span class="text-surface-700-300 text-xs">↻</span>
+							</div>
+						</button>
+					{/if}
+				{/each}
+			</Navigation.Group>
+		</Navigation.Content>
+	</Navigation>
 
 	<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-4">
 		<div class="mb-4">
@@ -39,7 +116,7 @@
 				<span class="text-surface-700-300">{#if connections.indexerLatestBlockNumber}#{connections.indexerLatestBlockNumber}{:else}—{/if}</span>
 			</div>
 
-			<a class="flex items-center justify-between gap-3 rounded-lg transition-colors hover:bg-surface-100-900/60" href="/status/ipfs" aria-label="IPFS status page">
+			<a class="flex items-center justify-between gap-3 rounded-lg transition-colors hover:bg-surface-100-900/60" href={resolve('/status/ipfs')} aria-label="IPFS status page">
 				<div class="flex items-center gap-3">
 					<span class={`h-3 w-3 rounded-full ${isConnected(connections.ipfsStatus) ? 'bg-green-500' : 'bg-red-500'}`}></span>
 					<span class="font-medium">IPFS</span>

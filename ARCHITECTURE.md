@@ -187,7 +187,7 @@ That prevents accidental creation of multiple browser IPFS nodes during client-s
 
 The sidebar component, `src/lib/components/StatusSidebar.svelte`, reads this state and shows:
 
-- a menu pane with permanent navigation/actions like My profile, Item ID, Create forum, and page refresh
+- a Skeleton `Navigation` sidebar menu with permanent navigation/actions like My profile, Item ID, Create forum, and page refresh
 - a separate status pane with chain health, indexer health, and IPFS health
 - a link to the dedicated IPFS status page
 
