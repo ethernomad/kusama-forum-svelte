@@ -11,10 +11,6 @@
 				Paste an item ID to jump directly to any forum, category, post, comment, or profile content page.
 			</p>
 		</div>
-		<div class="flex gap-3">
-			<a class="variant-outline btn" href="/my-profile">My profile</a>
-			<a class="variant-outline btn" href="/create-forum">Create forum</a>
-		</div>
 	</header>
 
 	<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-4">

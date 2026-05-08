@@ -119,7 +119,6 @@
 		</div>
 		<div class="flex gap-3">
 			<a class="variant-outline btn" href="/my-profile">My profile</a>
-			<a class="variant-outline btn" href="/create-forum">Create forum</a>
 		</div>
 	</header>
 

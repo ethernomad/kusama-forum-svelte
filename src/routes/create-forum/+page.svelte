@@ -68,9 +68,6 @@
 				Anyone can create a forum content item. The item is published to IPFS and then to the chain.
 			</p>
 		</div>
-		<div class="flex gap-3">
-			<a class="btn variant-outline" href="/my-profile">My profile</a>
-		</div>
 	</header>
 
 	{#if error}

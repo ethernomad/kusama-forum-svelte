@@ -193,6 +193,7 @@ The sidebar component, `src/lib/components/StatusSidebar.svelte`, reads this sta
 - local IPFS swarm target status
 - pinner queue counts
 - IPFS advertisement status
+- permanent navigation/actions like My profile, Item ID, Create forum, Status, and page refresh
 
 So the sidebar is effectively the operator dashboard for the dapp.
 

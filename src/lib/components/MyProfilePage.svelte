@@ -197,12 +197,6 @@
 					This matches the Acuity profile flow: publish a profile item, store the protobuf payload on IPFS, and update future edits as item revisions.
 				</p>
 			</div>
-			<div class="flex flex-wrap gap-3">
-				<a class="btn variant-outline" href="/create-forum">Create forum</a>
-				<button class="variant-outline btn" onclick={() => (refreshTick += 1)} disabled={savingProfile}>
-					Refresh
-				</button>
-			</div>
 		</header>
 
 
