@@ -354,7 +354,8 @@ When the route loads and Helia is ready:
 4. fetch chain item state when available
 5. fetch revision bytes from IPFS via Helia/UnixFS
 6. decode protobuf item payload and mixins
-7. render content-specific UI
+7. derive `created` from the first indexed `PublishRevision` timestamp and `modified` from the latest indexed `PublishRevision` timestamp
+8. render content-specific UI
 
 ### `loadContentByItemId()` combines three sources
 
@@ -380,6 +381,7 @@ From events it extracts:
 - IPFS hash
 - links
 - mentions
+- top-level hydrated event timestamp from the indexer (`timestamp`)
 
 #### 3. IPFS payload
 

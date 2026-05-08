@@ -105,6 +105,10 @@
 				return 'Unknown content';
 		}
 	}
+
+	function formatTimestamp(value: number | null): string {
+		return value == null ? '—' : new Date(value).toLocaleString();
+	}
 </script>
 
 <div class="max-w-4xl space-y-6">
@@ -151,11 +155,17 @@
 		</div>
 	{:else if content}
 		<section class="card p-6">
-			<div class="mb-4">
+			<div class="mb-4 space-y-1">
 				<p class="text-xs text-surface-700-300 uppercase">Type</p>
-				<p class="mt-1 text-sm font-medium">{contentTypeLabel(content)}</p>
-				<p class="mt-1 text-xs text-surface-700-300">
+				<p class="text-sm font-medium">{contentTypeLabel(content)}</p>
+				<p class="text-xs text-surface-700-300">
 					content_type_id: {content.contentTypeId ?? '—'}
+				</p>
+				<p class="text-xs text-surface-700-300">
+					Created: {formatTimestamp(content.createdAtMs)}
+				</p>
+				<p class="text-xs text-surface-700-300">
+					Modified: {formatTimestamp(content.modifiedAtMs)}
 				</p>
 			</div>
 

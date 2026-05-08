@@ -76,6 +76,7 @@ export type ContentRevisionMeta = {
 	ipfsHash: string;
 	links: string[];
 	mentions: string[];
+	timestampMs: number | null;
 };
 
 export type ContentItemDebug = {
@@ -106,6 +107,8 @@ export type LoadedContent = {
 	revisionId: number | null;
 	revisionIpfsHashHex: string | null;
 	latestRevisionId: number | null;
+	createdAtMs: number | null;
+	modifiedAtMs: number | null;
 	contentType: 'profile' | 'forum' | 'category' | 'forumPost' | 'comment' | 'unknown';
 	contentTypeId: number | null;
 	ownerHex: string | null;
@@ -542,6 +545,18 @@ function extractAccountIds(value: unknown): string[] {
 	return value.map(accountIdToHex).filter((entry): entry is string => !!entry);
 }
 
+function normalizeEventTimestampMs(entry: DecodedEvent): number | null {
+	const value = entry.timestamp ?? entry.blockTimestamp ?? entry.blockTime;
+	if (typeof value === 'number') return value > 0 ? value : null;
+	if (typeof value === 'string') {
+		const numeric = Number(value);
+		if (!Number.isNaN(numeric)) return numeric > 0 ? numeric : null;
+		const parsed = Date.parse(value);
+		if (!Number.isNaN(parsed)) return parsed;
+	}
+	return null;
+}
+
 export async function fetchContentRevisions(itemIdHex: string): Promise<ContentRevisionMeta[]> {
 	const response = await indexerRequest<{ events?: DecodedEvent[] }>('acuity_getEvents', {
 		key: { type: 'Custom', value: { name: 'item_id', kind: 'bytes32', value: itemIdHex } },
@@ -562,7 +577,8 @@ export async function fetchContentRevisions(itemIdHex: string): Promise<ContentR
 				revisionId: Number(fields.revision_id ?? fields.revisionId ?? 0),
 				ipfsHash: String(fields.ipfs_hash ?? fields.ipfsHash ?? ''),
 				links: extractItemIds(fields.links),
-				mentions: extractAccountIds(fields.mentions)
+				mentions: extractAccountIds(fields.mentions),
+				timestampMs: normalizeEventTimestampMs(entry)
 			};
 		})
 		.filter((entry) => entry.ipfsHash);
@@ -714,6 +730,8 @@ export async function loadContentByItemId(
 		revisionId == null ? revisions[0] : revisions.find((entry) => entry.revisionId === revisionId);
 	if (!selectedRevision)
 		throw new Error('No indexed Content::PublishRevision event was found for this item revision.');
+	const latestRevision = revisions[0] ?? null;
+	const firstRevision = revisions.length > 0 ? revisions[revisions.length - 1] : null;
 	const revisionIpfsHashHex = selectedRevision.ipfsHash;
 	const itemBytes = await fetchIpfsDigestBytes(heliaNode, revisionIpfsHashHex);
 	const item = decodeItemMessage(itemBytes);
@@ -730,6 +748,8 @@ export async function loadContentByItemId(
 		revisionId: selectedRevision.revisionId,
 		revisionIpfsHashHex,
 		latestRevisionId: state.revisionId,
+		createdAtMs: firstRevision?.timestampMs ?? null,
+		modifiedAtMs: latestRevision?.timestampMs ?? null,
 		contentType: detectContentType(contentTypeId),
 		contentTypeId,
 		ownerHex: state.ownerHex,
