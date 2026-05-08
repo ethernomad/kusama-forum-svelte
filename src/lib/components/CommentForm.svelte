@@ -44,10 +44,10 @@
 </script>
 
 {#if injectedAccounts.activeAccount}
-	<form class="mt-3 space-y-2 rounded-lg border border-surface-200-800 bg-surface-100-900 p-3" onsubmit={(event) => { event.preventDefault(); void publish(); }}>
-		<label class="block text-sm font-semibold">
-			{label}
-			<textarea class="mt-2 min-h-24 w-full rounded-lg border-surface-200-800 bg-surface-50-950" bind:value={body} placeholder="Comment body" disabled={saving} required></textarea>
+	<form class="card mt-3 space-y-3 p-4" onsubmit={(event) => { event.preventDefault(); void publish(); }}>
+		<label class="block space-y-2 text-sm font-semibold">
+			<span>{label}</span>
+			<textarea class="textarea min-h-24 w-full" bind:value={body} placeholder="Comment body" disabled={saving} required></textarea>
 		</label>
 		{#if error}<p class="text-sm text-red-300">{error}</p>{/if}
 		<button class="btn variant-filled" type="submit" disabled={saving || !connections.ipfsHasRequiredLocalConnection || !body.trim()}>{saving ? 'Publishing…' : 'Publish comment'}</button>

@@ -189,7 +189,7 @@
 
 <div class="space-y-6">
 	<section class="space-y-6 min-w-0">
-		<header class="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-dashed border-surface-200-800 p-6">
+		<header class="card flex flex-wrap items-start justify-between gap-4 border-dashed p-6">
 			<div>
 				<p class="text-surface-700-300 text-sm font-medium">On-chain identity</p>
 				<h1 class="mt-1 text-2xl font-semibold">Create or edit your profile</h1>
@@ -201,28 +201,28 @@
 
 
 		{#if profileError}
-			<div class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">{profileError}</div>
+			<div class="card border-red-500/40 px-4 py-3 text-sm text-red-200">{profileError}</div>
 		{:else if profileNotice}
-			<div class="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{profileNotice}</div>
+			<div class="card border-emerald-500/40 px-4 py-3 text-sm text-emerald-200">{profileNotice}</div>
 		{/if}
 
-		<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-6">
+		<section class="card p-6">
 			<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_16rem]">
 				<div class="space-y-4">
 					<label class="block space-y-2 text-sm">
 						<span class="font-medium">Name</span>
-						<input class="w-full rounded-lg border-surface-200-800 bg-surface-100-900" bind:value={draft.name} placeholder="Jonathan Brown" disabled={!activeAccount || savingProfile} />
+						<input class="input w-full" bind:value={draft.name} placeholder="Jonathan Brown" disabled={!activeAccount || savingProfile} />
 					</label>
 
 					<label class="block space-y-2 text-sm">
 						<span class="font-medium">Account type</span>
 						<select
-							class="w-full rounded-lg border-surface-200-800 bg-surface-100-900"
+							class="select w-full"
 							value={String(draft.accountType)}
 							onchange={(event) => (draft.accountType = Number((event.currentTarget as HTMLSelectElement).value))}
 							disabled={!activeAccount || savingProfile}
 						>
-							{#each accountTypeOptions as option}
+							{#each accountTypeOptions as option (option.value)}
 								<option value={option.value}>{option.label}</option>
 							{/each}
 						</select>
@@ -230,17 +230,17 @@
 
 					<label class="block space-y-2 text-sm">
 						<span class="font-medium">Location</span>
-						<input class="w-full rounded-lg border-surface-200-800 bg-surface-100-900" bind:value={draft.location} placeholder="York, England" disabled={!activeAccount || savingProfile} />
+						<input class="input w-full" bind:value={draft.location} placeholder="York, England" disabled={!activeAccount || savingProfile} />
 					</label>
 
 					<label class="block space-y-2 text-sm">
 						<span class="font-medium">Bio</span>
-						<textarea class="min-h-40 w-full rounded-lg border-surface-200-800 bg-surface-100-900" bind:value={draft.bio} placeholder="Describe the person, project, or organization behind this account." disabled={!activeAccount || savingProfile}></textarea>
+						<textarea class="textarea min-h-40 w-full" bind:value={draft.bio} placeholder="Describe the person, project, or organization behind this account." disabled={!activeAccount || savingProfile}></textarea>
 					</label>
 
 					<label class="block space-y-2 text-sm">
 						<span class="font-medium">Avatar image</span>
-						<input class="block w-full text-sm" type="file" accept="image/*" onchange={handleImageChange} disabled={!activeAccount || savingProfile} />
+						<input class="input w-full text-sm" type="file" accept="image/*" onchange={handleImageChange} disabled={!activeAccount || savingProfile} />
 						<p class="text-surface-700-300 text-xs">Images are re-encoded to JPEG and uploaded to IPFS as mipmap levels, matching the Dioxus app.</p>
 					</label>
 
@@ -266,7 +266,7 @@
 					</div>
 				</div>
 
-				<div class="space-y-4 rounded-xl border border-surface-200-800 p-4">
+				<div class="card space-y-4 p-4">
 					<p class="text-sm font-medium">Preview</p>
 					{#if selectedImagePreview ?? profile?.imagePreviewDataUrl}
 						<img src={selectedImagePreview ?? profile?.imagePreviewDataUrl ?? ''} alt="Profile avatar" class="mx-auto aspect-square w-40 rounded-full object-cover" />

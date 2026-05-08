@@ -13,11 +13,11 @@
 		</div>
 	</header>
 
-	<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-4">
+	<section class="card p-4">
 		<div class="flex flex-col gap-3 sm:flex-row sm:items-end">
 			<label class="block flex-1 space-y-2 text-sm">
 				<span class="font-medium">Item ID</span>
-				<input class="w-full rounded-lg border-surface-200-800 bg-surface-100-900" bind:value={contentLookupId} placeholder="0x..." />
+				<input class="input w-full" bind:value={contentLookupId} placeholder="0x..." />
 			</label>
 			<a class="btn variant-outline" href={contentLookupId.trim() ? `/item_id/${contentLookupId.trim()}` : '#'} aria-disabled={!contentLookupId.trim()}>
 				Open content

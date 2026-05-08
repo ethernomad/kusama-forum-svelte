@@ -8,6 +8,7 @@
 		type LoadedContent
 	} from '$lib/services/content';
 	import { injectedAccounts } from '$lib/services/accounts.svelte';
+	import { resolve } from '$app/paths';
 	import { connections } from '$lib/services/connections.svelte';
 	import { PUBLISH_NOTICE_PREPARING } from '$lib/services/publish-notices';
 
@@ -108,27 +109,27 @@
 	</div>
 
 	{#if categoryError}
-		<div class="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">{categoryError}</div>
+		<div class="card mt-4 border-red-500/40 px-3 py-2 text-sm text-red-200">{categoryError}</div>
 	{/if}
 	{#if categoryNotice}
-		<div class="mt-4 rounded-lg border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-200">{categoryNotice}</div>
+		<div class="card mt-4 border-green-500/40 px-3 py-2 text-sm text-green-200">{categoryNotice}</div>
 	{/if}
 
 	{#if isForumOwner}
-		<form class="mt-4 space-y-3 rounded-lg border border-surface-200-800 bg-surface-100-900 p-4" onsubmit={(event) => { event.preventDefault(); void addCategory(); }}>
+		<form class="card mt-4 space-y-3 p-4" onsubmit={(event) => { event.preventDefault(); void addCategory(); }}>
 			<h4 class="font-semibold">Add category</h4>
-			<input class="w-full rounded-lg border-surface-200-800 bg-surface-50-950" bind:value={categoryDraft.title} placeholder="Category title" disabled={categorySaving} required />
-			<textarea class="min-h-24 w-full rounded-lg border-surface-200-800 bg-surface-50-950" bind:value={categoryDraft.body} placeholder="Category body" disabled={categorySaving}></textarea>
+			<input class="input w-full" bind:value={categoryDraft.title} placeholder="Category title" disabled={categorySaving} required />
+			<textarea class="textarea min-h-24 w-full" bind:value={categoryDraft.body} placeholder="Category body" disabled={categorySaving}></textarea>
 			<button class="btn variant-filled" type="submit" disabled={categorySaving || !connections.ipfsHasRequiredLocalConnection || !categoryDraft.title.trim()}>{categorySaving ? 'Publishing…' : 'Publish category'}</button>
 		</form>
 	{/if}
 
 	<div class="mt-4 space-y-3">
-		{#each categories as category}
-			<article class="rounded-lg border border-surface-200-800 bg-surface-100-900 p-4">
+		{#each categories as category (category.itemIdHex)}
+			<article class="card p-4">
 				<div class="flex items-start justify-between gap-3">
 					<div>
-						<a class="text-lg font-semibold hover:underline" href={`/item_id/${encodeURIComponent(category.itemIdHex)}`}>{category.title || 'Untitled category'}</a>
+						<a class="text-lg font-semibold hover:underline" href={resolve(`/item_id/${encodeURIComponent(category.itemIdHex)}`)}>{category.title || 'Untitled category'}</a>
 						{#if category.bodyText}<p class="text-surface-700-300 mt-2 whitespace-pre-wrap text-sm">{category.bodyText}</p>{/if}
 						<code class="text-surface-700-300 mt-2 block break-all text-xs">{category.itemIdHex}</code>
 					</div>

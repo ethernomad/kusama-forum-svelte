@@ -190,6 +190,7 @@ The sidebar component, `src/lib/components/StatusSidebar.svelte`, reads this sta
 - a Skeleton `Navigation` sidebar menu with permanent navigation/actions like My profile, Item ID, Create forum, and page refresh
 - a separate status pane with chain health, indexer health, and IPFS health
 - a link to the dedicated IPFS status page
+- Skeleton-styled form controls across the main publishing and editing flows (`input`, `textarea`, `select`, and `btn` classes) for consistent dapp theming
 
 The dedicated status page, `src/routes/status/ipfs/+page.svelte`, is specifically for IPFS and shows:
 

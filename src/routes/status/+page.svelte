@@ -8,7 +8,7 @@
 </script>
 
 <div class="max-w-5xl space-y-6">
-	<header class="rounded-xl border border-dashed border-surface-200-800 p-6">
+	<header class="card border-dashed p-6">
 		<p class="text-sm font-medium text-surface-700-300">Background publishing</p>
 		<h1 class="mt-1 text-2xl font-semibold">IPFS pinner status</h1>
 		<p class="mt-2 text-sm text-surface-700-300">
@@ -17,11 +17,11 @@
 	</header>
 
 	<section class="grid gap-4 lg:grid-cols-2">
-		<div class="rounded-xl border border-surface-200-800 bg-surface-50-950 p-4">
+		<div class="card p-4">
 			<h2 class="mb-3 text-base font-medium">Helia swarm targets</h2>
 			{#if connections.ipfsSwarmAddresses.length > 0}
 				<ul class="space-y-2 text-xs break-all">
-					{#each connections.ipfsSwarmAddresses as address}
+					{#each connections.ipfsSwarmAddresses as address (address)}
 						<li class="rounded-lg border border-surface-200-800 bg-surface-100-900 px-2 py-1">
 							<div class="flex items-start justify-between gap-2">
 								<span class="font-mono">{address}</span>
@@ -40,7 +40,7 @@
 			{/if}
 		</div>
 
-		<div class="rounded-xl border border-surface-200-800 bg-surface-50-950 p-4">
+		<div class="card p-4">
 			<div class="flex flex-wrap items-center justify-between gap-3">
 				<div class="text-sm text-surface-700-300">
 					<span class="font-medium text-white">{ipfsPinningQueue.entries.length}</span> total ·
@@ -56,7 +56,7 @@
 		</div>
 	</section>
 
-	<section class="overflow-hidden rounded-xl border border-surface-200-800 bg-surface-50-950">
+	<section class="card overflow-hidden">
 		{#if ipfsPinningQueue.entries.length === 0}
 			<div class="p-6 text-sm text-surface-700-300">No CIDs are waiting for the pinner.</div>
 		{:else}

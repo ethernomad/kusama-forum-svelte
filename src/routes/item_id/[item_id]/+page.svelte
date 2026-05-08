@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import CategoryForumPosts from '$lib/components/CategoryForumPosts.svelte';
 	import ContentTabs from '$lib/components/ContentTabs.svelte';
 	import Comments from '$lib/components/Comments.svelte';
@@ -110,7 +111,7 @@
 
 <div class="max-w-4xl space-y-6">
 	<header
-		class="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-dashed border-surface-200-800 p-6"
+		class="card flex flex-wrap items-start justify-between gap-4 border-dashed p-6"
 	>
 		<div>
 			<p class="text-sm font-medium text-surface-700-300">Content viewer</p>
@@ -118,7 +119,7 @@
 			<p class="mt-2 text-sm break-all text-surface-700-300">{itemId}</p>
 		</div>
 		<div class="flex gap-3">
-			<a class="variant-outline btn" href="/my-profile">My profile</a>
+			<a class="variant-outline btn" href={resolve('/my-profile')}>My profile</a>
 		</div>
 	</header>
 
@@ -129,7 +130,7 @@
 				<label class="flex items-center gap-2 text-xs text-surface-700-300">
 					Revision
 					<select class="select w-44" bind:value={selectedRevisionId} aria-label="Select revision">
-						{#each revisions as revision}
+						{#each revisions as revision (revision.revisionId)}
 							<option value={String(revision.revisionId)}>
 								Revision {revision.revisionId}{revision.revisionId === content.latestRevisionId
 									? ' (latest)'
@@ -143,16 +144,16 @@
 	{/if}
 
 	{#if loading}
-		<div class="rounded-xl border border-surface-200-800 bg-surface-50-950 px-4 py-3 text-sm">
+		<div class="card px-4 py-3 text-sm">
 			Loading content…
 		</div>
 	{:else if error}
-		<div class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+		<div class="card border-red-500/40 px-4 py-3 text-sm text-red-200">
 			{error}
 		</div>
 	{:else if content}
 		<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
-			<section class="rounded-xl border border-surface-200-800 bg-surface-50-950 p-6">
+			<section class="card p-6">
 				<div class="mb-4">
 					<p class="text-xs text-surface-700-300 uppercase">Type</p>
 					<p class="mt-1 text-sm font-medium">{contentTypeLabel(content)}</p>
@@ -195,7 +196,7 @@
 			</section>
 
 			<aside
-				class="space-y-4 rounded-xl border border-surface-200-800 bg-surface-50-950 p-4 text-sm"
+				class="card space-y-4 p-4 text-sm"
 			>
 				<div>
 					<p class="text-xs text-surface-700-300 uppercase">Item ID</p>
@@ -224,7 +225,7 @@
 				<div>
 					<p class="text-xs text-surface-700-300 uppercase">Mixins</p>
 					<ul class="mt-1 space-y-1 text-xs">
-						{#each content.rawMixinIds as mixinId}
+						{#each content.rawMixinIds as mixinId (mixinId)}
 							<li><code>{shortHex(`0x${mixinId.toString(16).padStart(8, '0')}`)}</code></li>
 						{/each}
 					</ul>

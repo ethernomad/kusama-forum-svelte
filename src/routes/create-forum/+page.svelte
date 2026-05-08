@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { formatShortAddress, injectedAccounts } from '$lib/services/accounts.svelte';
 	import { connections } from '$lib/services/connections.svelte';
 	import { saveForum, type ForumDraft } from '$lib/services/content';
@@ -50,7 +51,7 @@
 				draft
 			});
 			notice = 'Forum created successfully. Redirecting...';
-			await goto(`/item_id/${saved.itemIdHex}`);
+			await goto(resolve(`/item_id/${saved.itemIdHex}`));
 		} catch (value) {
 			error = value instanceof Error ? value.message : String(value);
 		} finally {
@@ -60,7 +61,7 @@
 </script>
 
 <div class="max-w-4xl space-y-6">
-	<header class="mb-6 flex flex-wrap items-start justify-between gap-4 rounded-xl border border-dashed border-surface-200-800 p-6">
+	<header class="card mb-6 flex flex-wrap items-start justify-between gap-4 border-dashed p-6">
 		<div>
 			<p class="text-surface-700-300 text-sm font-medium">Top-level content item</p>
 			<h1 class="mt-1 text-2xl font-semibold">Create a forum</h1>
@@ -71,22 +72,22 @@
 	</header>
 
 	{#if error}
-		<div class="mb-6 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>
+		<div class="card mb-6 border-red-500/40 px-4 py-3 text-sm text-red-200">{error}</div>
 	{:else if notice}
-		<div class="mb-6 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{notice}</div>
+		<div class="card mb-6 border-emerald-500/40 px-4 py-3 text-sm text-emerald-200">{notice}</div>
 	{/if}
 
-	<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-6">
+	<section class="card p-6">
 		<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
 			<div class="space-y-4">
 				<label class="block space-y-2 text-sm">
 					<span class="font-medium">Forum title</span>
-					<input class="w-full rounded-lg border-surface-200-800 bg-surface-100-900" bind:value={draft.title} placeholder="Kusama Governance" disabled={saving} />
+					<input class="input w-full" bind:value={draft.title} placeholder="Kusama Governance" disabled={saving} />
 				</label>
 
 				<label class="block space-y-2 text-sm">
 					<span class="font-medium">Description</span>
-					<textarea class="min-h-48 w-full rounded-lg border-surface-200-800 bg-surface-100-900" bind:value={draft.description} placeholder="What is this forum about?" disabled={saving}></textarea>
+					<textarea class="textarea min-h-48 w-full" bind:value={draft.description} placeholder="What is this forum about?" disabled={saving}></textarea>
 				</label>
 
 				<div class="flex flex-wrap gap-3">
@@ -97,11 +98,11 @@
 							Create forum
 						{/if}
 					</button>
-					<a class="btn variant-outline" href="/my-profile">Cancel</a>
+					<a class="btn variant-outline" href={resolve('/my-profile')}>Cancel</a>
 				</div>
 			</div>
 
-			<aside class="space-y-4 rounded-xl border border-surface-200-800 p-4">
+			<aside class="card space-y-4 p-4">
 				<p class="text-sm font-medium">Preview</p>
 				<div>
 					<h2 class="text-lg font-semibold">{draft.title.trim() || 'Untitled forum'}</h2>

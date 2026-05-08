@@ -96,7 +96,7 @@
 
 <div class="max-w-4xl space-y-6">
 	<header
-		class="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-dashed border-surface-200-800 p-6"
+		class="card flex flex-wrap items-start justify-between gap-4 border-dashed p-6"
 	>
 		<div>
 			<p class="text-sm font-medium text-surface-700-300">Content editor</p>
@@ -111,41 +111,41 @@
 	{/if}
 
 	{#if error}
-		<div class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+		<div class="card border-red-500/40 px-4 py-3 text-sm text-red-200">
 			{error}
 		</div>
 	{:else if notice}
 		<div
-			class="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200"
+			class="card border-emerald-500/40 px-4 py-3 text-sm text-emerald-200"
 		>
 			{notice}
 		</div>
 	{/if}
 
 	{#if loading}
-		<div class="rounded-xl border border-surface-200-800 bg-surface-50-950 px-4 py-3 text-sm">
+		<div class="card px-4 py-3 text-sm">
 			Loading content…
 		</div>
 	{:else if content && !canEdit}
 		<div
-			class="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+			class="card border-amber-500/40 px-4 py-3 text-sm text-amber-100"
 		>
 			This item is not editable by the active account, or it is not revisionable.
 		</div>
 	{:else if content}
-		<section class="rounded-xl border border-surface-200-800 bg-surface-50-950 p-6">
+		<section class="card p-6">
 			<div class="space-y-4">
 				<label class="block space-y-2 text-sm">
 					<span class="font-medium">Title</span>
 					<input
-						class="w-full rounded-lg border-surface-200-800 bg-surface-100-900"
+						class="input w-full"
 						bind:value={draft.title}
 						disabled={saving}
 					/>
 				</label>
 
 				{#if content.contentType === 'forumPost'}
-					<div class="rounded-lg border border-surface-200-800 p-3 text-sm">
+					<div class="card p-3 text-sm">
 						<p class="text-xs text-surface-700-300 uppercase">Category</p>
 						<p class="mt-1 break-all">{categoryItemId || '—'}</p>
 						<p class="mt-1 text-xs text-surface-700-300">
@@ -157,7 +157,7 @@
 				<label class="block space-y-2 text-sm">
 					<span class="font-medium">Body</span>
 					<textarea
-						class="min-h-64 w-full rounded-lg border-surface-200-800 bg-surface-100-900"
+						class="textarea min-h-64 w-full"
 						bind:value={draft.body}
 						disabled={saving}
 					></textarea>

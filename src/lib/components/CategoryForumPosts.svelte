@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { loadCategoryForumPostsIncremental, saveForumPost, type ForumPost, type LoadedContent } from '$lib/services/content';
 	import { injectedAccounts } from '$lib/services/accounts.svelte';
 	import { connections } from '$lib/services/connections.svelte';
@@ -63,7 +64,7 @@
 				categoryItemIdHex: category.itemIdHex,
 				draft
 			});
-			await goto(`/item_id/${encodeURIComponent(post.itemIdHex)}`);
+			await goto(resolve(`/item_id/${encodeURIComponent(post.itemIdHex)}`));
 		} catch (value) {
 			error = value instanceof Error ? value.message : String(value);
 		} finally {
@@ -79,17 +80,17 @@
 	</div>
 
 	{#if error}
-		<div class="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</div>
+		<div class="card mt-4 border-red-500/40 px-3 py-2 text-sm text-red-200">{error}</div>
 	{/if}
 	{#if notice}
-		<div class="mt-4 rounded-lg border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-200">{notice}</div>
+		<div class="card mt-4 border-green-500/40 px-3 py-2 text-sm text-green-200">{notice}</div>
 	{/if}
 
 	{#if injectedAccounts.activeAccount}
-		<form class="mt-4 space-y-3 rounded-lg border border-surface-200-800 bg-surface-100-900 p-4" onsubmit={(event) => { event.preventDefault(); void addPost(); }}>
+		<form class="card mt-4 space-y-3 p-4" onsubmit={(event) => { event.preventDefault(); void addPost(); }}>
 			<h4 class="font-semibold">Create post</h4>
-			<input class="w-full rounded-lg border-surface-200-800 bg-surface-50-950" bind:value={draft.title} placeholder="Post title" disabled={saving} required />
-			<textarea class="min-h-32 w-full rounded-lg border-surface-200-800 bg-surface-50-950" bind:value={draft.body} placeholder="Post body" disabled={saving} required></textarea>
+			<input class="input w-full" bind:value={draft.title} placeholder="Post title" disabled={saving} required />
+			<textarea class="textarea min-h-32 w-full" bind:value={draft.body} placeholder="Post body" disabled={saving} required></textarea>
 			<button class="btn variant-filled" type="submit" disabled={saving || !connections.ipfsHasRequiredLocalConnection || !draft.title.trim() || !draft.body.trim()}>{saving ? 'Publishing…' : 'Publish post'}</button>
 		</form>
 	{:else}
@@ -97,9 +98,9 @@
 	{/if}
 
 	<div class="mt-4 space-y-3">
-		{#each posts as post}
-			<article class="rounded-lg border border-surface-200-800 bg-surface-100-900 p-4">
-				<a class="text-lg font-semibold hover:underline" href={`/item_id/${encodeURIComponent(post.itemIdHex)}`}>{post.title || 'Untitled post'}</a>
+		{#each posts as post (post.itemIdHex)}
+			<article class="card p-4">
+				<a class="text-lg font-semibold hover:underline" href={resolve(`/item_id/${encodeURIComponent(post.itemIdHex)}`)}>{post.title || 'Untitled post'}</a>
 			</article>
 		{:else}
 			<p class="text-surface-700-300 text-sm">{loading ? 'Loading posts…' : 'No posts found.'}</p>

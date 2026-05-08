@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import ContentTabs from '$lib/components/ContentTabs.svelte';
 	import { injectedAccounts } from '$lib/services/accounts.svelte';
 	import {
@@ -91,17 +92,17 @@
 			<h1 class="mt-1 text-2xl font-semibold">Debug item</h1>
 			<p class="mt-2 text-sm break-all text-surface-700-300">{itemId}</p>
 		</div>
-		<a class="variant-outline btn" href={`/item_id/${itemId}`}>Back to item</a>
+		<a class="variant-outline btn" href={resolve(`/item_id/${itemId}`)}>Back to item</a>
 	</header>
 
 	{#if debug}<ContentTabs {itemId} {canEdit} active="debug" />{/if}
 
 	{#if loading}
-		<div class="rounded-xl border border-surface-200-800 bg-surface-50-950 px-4 py-3 text-sm">Loading debug data…</div>
+		<div class="card px-4 py-3 text-sm">Loading debug data…</div>
 	{:else if error}
-		<div class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>
+		<div class="card border-red-500/40 px-4 py-3 text-sm text-red-200">{error}</div>
 	{:else if debug}
-		<section class="rounded-xl border border-surface-200-800 bg-surface-50-950 p-6 text-sm">
+		<section class="card p-6 text-sm">
 			<h2 class="text-lg font-semibold">Chain state</h2>
 			<div class="mt-4 grid gap-4 md:grid-cols-3">
 				<div><p class="text-xs text-surface-700-300 uppercase">Owner</p><code class="break-all">{debug.ownerHex ?? '—'}</code></div>
@@ -110,15 +111,15 @@
 			</div>
 			<div class="mt-4">
 				<p class="text-xs text-surface-700-300 uppercase">Parents from PublishItem</p>
-				{#if debug.parents.length}<ul class="mt-1 list-disc space-y-1 pl-5">{#each debug.parents as parent}<li><code class="break-all">{parent}</code></li>{/each}</ul>{:else}<p>—</p>{/if}
+				{#if debug.parents.length}<ul class="mt-1 list-disc space-y-1 pl-5">{#each debug.parents as parent (parent)}<li><code class="break-all">{parent}</code></li>{/each}</ul>{:else}<p>—</p>{/if}
 			</div>
 		</section>
 
-		<section class="rounded-xl border border-surface-200-800 bg-surface-50-950 p-6 text-sm">
+		<section class="card p-6 text-sm">
 			<div class="flex flex-wrap items-center justify-between gap-3">
 				<h2 class="text-lg font-semibold">Revision</h2>
 				<select class="select w-56" bind:value={selectedRevisionId} aria-label="Select revision">
-					{#each debug.revisions as entry}
+					{#each debug.revisions as entry (entry.revisionId)}
 						<option value={String(entry.revisionId)}>Revision {entry.revisionId}{entry.revisionId === debug.latestRevisionId ? ' (latest)' : ''}</option>
 					{/each}
 				</select>
@@ -138,7 +139,7 @@
 
 				<div class="mt-6 space-y-4">
 					<h3 class="font-semibold">Decoded mixins</h3>
-					{#each revision.mixins as mixin}
+					{#each revision.mixins as mixin (mixin.mixinId)}
 						<article class="rounded-lg border border-surface-200-800 p-4">
 							<p class="font-medium">{mixin.mixinId} / {mixin.name}</p>
 							<p class="mt-1 text-xs text-surface-700-300">0x{mixin.mixinId.toString(16).padStart(8, '0')}</p>
