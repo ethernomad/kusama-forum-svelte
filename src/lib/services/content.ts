@@ -8,6 +8,7 @@ import { cryptoWaitReady, decodeAddress } from '@polkadot/util-crypto';
 
 import type { InjectedAccount } from './accounts.svelte';
 import { signAndFinalize, type SignableExtrinsic } from './chain-signing';
+import { buildImagePayload, decodeImageMixin, previewDataUrlForImageMixin } from './content-images';
 import { getIndexedEvents } from './indexer.svelte';
 import { publishBytesToIpfs } from './ipfs-publish';
 import { resolvePreparedValue } from './prepared-publish';
@@ -118,6 +119,7 @@ export type LoadedContent = {
 	languageTag: string | null;
 	profileAccountType: number | null;
 	profileLocation: string | null;
+	existingImagePayload: Bytes | null;
 	imagePreviewDataUrl: string | null;
 	contentLoaded: boolean;
 	contentError: string | null;
@@ -127,6 +129,9 @@ export type LoadedContent = {
 
 export type PreparedForumSave = {
 	draft: ForumDraft;
+	selectedImageFileName: string | null;
+	imagePayload: Bytes | null;
+	imagePreviewDataUrl: string | null;
 	itemPayload: Bytes;
 	revisionIpfsHashHex: string;
 	revisionIpfsHashBytes: Bytes;
@@ -137,6 +142,10 @@ export type PreparedContentRevision = {
 	contentTypeId: number;
 	languageTag: string;
 	links: string[];
+	selectedImageFileName: string | null;
+	removeImage: boolean;
+	imagePayload: Bytes | null;
+	imagePreviewDataUrl: string | null;
 	revisionIpfsHashHex: string;
 	revisionIpfsHashBytes: Bytes;
 };
@@ -177,6 +186,10 @@ function writeUInt32Field(writer: ProtoWriter, fieldNumber: number, value: numbe
 
 function writeInt32Field(writer: ProtoWriter, fieldNumber: number, value: number) {
 	writer.uint32((fieldNumber << 3) | 0).int32(value | 0);
+}
+
+function writeUInt64Field(writer: ProtoWriter, fieldNumber: number, value: bigint) {
+	writer.uint32((fieldNumber << 3) | 0).uint64(value.toString());
 }
 
 function encodeMixinPayload(message: MixinPayload): Bytes {
@@ -399,73 +412,6 @@ async function uploadIpfsDigest(heliaNode: Helia, bytes: Uint8Array): Promise<st
 	return toHex(cid.multihash.digest);
 }
 
-function multihashBytesToCid(multihashBytes: Uint8Array): CID {
-	const digest = decodeDigest(multihashBytes);
-	if (digest.code !== 0x12) {
-		throw new Error('Unsupported image multihash algorithm.');
-	}
-	return CID.createV0(createDigest(0x12, digest.digest));
-}
-
-function decodeImageMixin(bytes: Uint8Array): {
-	ipfsHash: Bytes;
-	mipmapLevel: { ipfsHash: Bytes }[];
-} {
-	const reader = Reader.create(bytes);
-	const message: { ipfsHash: Bytes; mipmapLevel: { ipfsHash: Bytes }[] } = {
-		ipfsHash: new Uint8Array(),
-		mipmapLevel: []
-	};
-
-	while (reader.pos < reader.len) {
-		const tag = reader.uint32();
-		switch (tag >>> 3) {
-			case 3:
-				message.ipfsHash = u8a(reader.bytes());
-				break;
-			case 6: {
-				const inner = Reader.create(reader.bytes());
-				let ipfsHash: Bytes = new Uint8Array();
-				while (inner.pos < inner.len) {
-					const innerTag = inner.uint32();
-					switch (innerTag >>> 3) {
-						case 2:
-							ipfsHash = u8a(inner.bytes());
-							break;
-						default:
-							inner.skipType(innerTag & 7);
-					}
-				}
-				message.mipmapLevel.push({ ipfsHash });
-				break;
-			}
-			default:
-				reader.skipType(tag & 7);
-		}
-	}
-
-	return message;
-}
-
-async function previewDataUrlForImageMixin(
-	heliaNode: Helia,
-	payload: Bytes
-): Promise<string | null> {
-	const image = decodeImageMixin(payload);
-	const multihash = image.mipmapLevel[0]?.ipfsHash?.length
-		? image.mipmapLevel[0].ipfsHash
-		: image.ipfsHash.length
-			? image.ipfsHash
-			: null;
-	if (!multihash) return null;
-	const fs = unixfs(heliaNode);
-	const chunks: Uint8Array[] = [];
-	for await (const chunk of fs.cat(multihashBytesToCid(multihash))) {
-		chunks.push(u8a(chunk));
-	}
-	const bytes = concatBytes(...chunks);
-	return `data:image/jpeg;base64,${btoa(String.fromCharCode(...bytes))}`;
-}
 
 async function indexerRequest<T>(_method: string, payload: Record<string, unknown>): Promise<T> {
 	return await getIndexedEvents<T>(payload);
@@ -759,6 +705,7 @@ export async function loadContentByItemId(
 		languageTag: languagePayload ? decodeLanguageMixin(languagePayload).languageTag : null,
 		profileAccountType: decodedProfile?.accountType ?? null,
 		profileLocation: decodedProfile?.location ?? null,
+		existingImagePayload: imagePayload,
 		imagePreviewDataUrl: imagePayload
 			? await previewDataUrlForImageMixin(heliaNode, imagePayload)
 			: null,
@@ -769,18 +716,27 @@ export async function loadContentByItemId(
 	};
 }
 
-function encodeContentItem(
-	contentTypeId: number,
-	title: string | null,
-	bodyText: string,
-	languageTag = DEFAULT_LANGUAGE_TAG
-): Bytes {
+function encodeContentItem(params: {
+	contentTypeId: number;
+	title?: string | null;
+	bodyText: string;
+	languageTag?: string;
+	additionalMixins?: MixinPayload[];
+}): Bytes {
+	const {
+		contentTypeId,
+		title = null,
+		bodyText,
+		languageTag = DEFAULT_LANGUAGE_TAG,
+		additionalMixins = []
+	} = params;
 	return encodeItemMessage({
 		contentTypeId,
 		mixinPayload: [
 			{ mixinId: LANGUAGE_MIXIN_ID, payload: encodeLanguageMixin(languageTag) },
 			...(title == null ? [] : [{ mixinId: TITLE_MIXIN_ID, payload: encodeTitleMixin(title) }]),
-			{ mixinId: BODY_TEXT_MIXIN_ID, payload: encodeBodyTextMixin(bodyText) }
+			{ mixinId: BODY_TEXT_MIXIN_ID, payload: encodeBodyTextMixin(bodyText) },
+			...additionalMixins
 		]
 	});
 }
@@ -801,8 +757,13 @@ export function canEditContent(
 	);
 }
 
-function encodeForumItem(draft: ForumDraft): Bytes {
-	return encodeContentItem(FORUM_CONTENT_TYPE_ID, draft.title, draft.description);
+function encodeForumItem(draft: ForumDraft, imagePayload: Bytes | null = null): Bytes {
+	return encodeContentItem({
+		contentTypeId: FORUM_CONTENT_TYPE_ID,
+		title: draft.title,
+		bodyText: draft.description,
+		additionalMixins: imagePayload ? [{ mixinId: IMAGE_MIXIN_ID, payload: imagePayload }] : []
+	});
 }
 
 function equalJsonValue(left: unknown, right: unknown): boolean {
@@ -819,6 +780,15 @@ function matchesContentRevisionDraft(left: ContentRevisionDraft, right: ContentR
 
 function matchesItemIdList(left: string[], right: string[]): boolean {
 	return equalJsonValue(left, right);
+}
+
+function matchesBytes(left: Bytes | null, right: Bytes | null): boolean {
+	if (left == null || right == null) return left === right;
+	if (left.length !== right.length) return false;
+	for (let i = 0; i < left.length; i += 1) {
+		if (left[i] !== right[i]) return false;
+	}
+	return true;
 }
 
 async function publishDerivedItemAndFinalize(params: {
@@ -877,12 +847,18 @@ async function saveEncodedContentItem(params: {
 export async function prepareForumSave(params: {
 	heliaNode: Helia;
 	draft: ForumDraft;
+	selectedImageFile?: File | null;
 }): Promise<PreparedForumSave> {
-	const { heliaNode, draft } = params;
-	const itemPayload = encodeForumItem(draft);
+	const { heliaNode, draft, selectedImageFile = null } = params;
+	const builtImage = selectedImageFile ? await buildImagePayload(heliaNode, selectedImageFile) : null;
+	const imagePayload = builtImage?.payload ?? null;
+	const itemPayload = encodeForumItem(draft, imagePayload);
 	const revisionIpfsHashHex = await uploadIpfsDigest(heliaNode, itemPayload);
 	return {
 		draft: { ...draft },
+		selectedImageFileName: selectedImageFile?.name ?? null,
+		imagePayload,
+		imagePreviewDataUrl: builtImage?.previewDataUrl ?? null,
 		itemPayload,
 		revisionIpfsHashHex,
 		revisionIpfsHashBytes: hexToBytes(revisionIpfsHashHex)
@@ -894,13 +870,16 @@ export async function saveForum(params: {
 	heliaNode: Helia;
 	account: InjectedAccount;
 	draft: ForumDraft;
+	selectedImageFile?: File | null;
 	prepared?: PreparedForumSave | null;
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
-	const { api, heliaNode, account, draft, prepared } = params;
+	const { api, heliaNode, account, draft, selectedImageFile = null, prepared } = params;
 	const resolved = await resolvePreparedValue({
-		input: { heliaNode, draft },
+		input: { heliaNode, draft, selectedImageFile },
 		prepared,
-		canReusePrepared: (candidate, input) => matchesForumDraft(candidate.draft, input.draft),
+		canReusePrepared: (candidate, input) =>
+			candidate.selectedImageFileName === (input.selectedImageFile?.name ?? null) &&
+			matchesForumDraft(candidate.draft, input.draft),
 		prepare: prepareForumSave
 	});
 	const nonce = crypto.getRandomValues(new Uint8Array(32));
@@ -936,7 +915,7 @@ export async function saveCategory(params: {
 		api,
 		heliaNode,
 		account,
-		itemPayload: encodeContentItem(CATEGORY_CONTENT_TYPE_ID, draft.title, draft.body),
+		itemPayload: encodeContentItem({ contentTypeId: CATEGORY_CONTENT_TYPE_ID, title: draft.title, bodyText: draft.body }),
 		parents: [forumItemIdHex],
 		links: [],
 		flags: CATEGORY_ITEM_FLAGS
@@ -955,7 +934,7 @@ export async function saveForumPost(params: {
 		api,
 		heliaNode,
 		account,
-		itemPayload: encodeContentItem(FORUM_POST_CONTENT_TYPE_ID, draft.title, draft.body),
+		itemPayload: encodeContentItem({ contentTypeId: FORUM_POST_CONTENT_TYPE_ID, title: draft.title, bodyText: draft.body }),
 		parents: [],
 		links: [categoryItemIdHex],
 		flags: FORUM_POST_ITEM_FLAGS
@@ -974,7 +953,7 @@ export async function saveComment(params: {
 		api,
 		heliaNode,
 		account,
-		itemPayload: encodeContentItem(COMMENT_CONTENT_TYPE_ID, null, draft.body),
+		itemPayload: encodeContentItem({ contentTypeId: COMMENT_CONTENT_TYPE_ID, title: null, bodyText: draft.body }),
 		parents: [parentItemIdHex],
 		links: [],
 		flags: COMMENT_ITEM_FLAGS
@@ -985,20 +964,34 @@ export async function prepareContentRevision(params: {
 	heliaNode: Helia;
 	content: LoadedContent;
 	draft: ContentRevisionDraft;
+	selectedImageFile?: File | null;
+	removeImage?: boolean;
 }): Promise<PreparedContentRevision> {
-	const { heliaNode, content, draft } = params;
+	const { heliaNode, content, draft, selectedImageFile = null, removeImage = false } = params;
 	if (content.contentTypeId == null)
 		throw new Error('Cannot revise content with an unknown content type.');
 	const languageTag = content.languageTag ?? DEFAULT_LANGUAGE_TAG;
+	const builtImage = selectedImageFile ? await buildImagePayload(heliaNode, selectedImageFile) : null;
+	const imagePayload = removeImage ? null : (builtImage?.payload ?? content.existingImagePayload);
 	const revisionIpfsHashHex = await uploadIpfsDigest(
 		heliaNode,
-		encodeContentItem(content.contentTypeId, draft.title, draft.body, languageTag)
+		encodeContentItem({
+			contentTypeId: content.contentTypeId,
+			title: draft.title,
+			bodyText: draft.body,
+			languageTag,
+			additionalMixins: imagePayload ? [{ mixinId: IMAGE_MIXIN_ID, payload: imagePayload }] : []
+		})
 	);
 	return {
 		draft: { ...draft },
 		contentTypeId: content.contentTypeId,
 		languageTag,
 		links: [...content.latestLinks],
+		selectedImageFileName: selectedImageFile?.name ?? null,
+		removeImage,
+		imagePayload,
+		imagePreviewDataUrl: removeImage ? null : (builtImage?.previewDataUrl ?? content.imagePreviewDataUrl),
 		revisionIpfsHashHex,
 		revisionIpfsHashBytes: hexToBytes(revisionIpfsHashHex)
 	};
@@ -1010,18 +1003,25 @@ export async function publishContentRevision(params: {
 	account: InjectedAccount;
 	content: LoadedContent;
 	draft: ContentRevisionDraft;
+	selectedImageFile?: File | null;
+	removeImage?: boolean;
 	prepared?: PreparedContentRevision | null;
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
-	const { api, heliaNode, account, content, draft, prepared } = params;
+	const { api, heliaNode, account, content, draft, selectedImageFile = null, removeImage = false, prepared } = params;
 	if (!canEditContent(content, account))
 		throw new Error('The active account cannot edit this content item.');
 	const resolved = await resolvePreparedValue({
-		input: { heliaNode, content, draft },
+		input: { heliaNode, content, draft, selectedImageFile, removeImage },
 		prepared,
 		canReusePrepared: (candidate, input) =>
 			candidate.contentTypeId === input.content.contentTypeId &&
 			candidate.languageTag === (input.content.languageTag ?? DEFAULT_LANGUAGE_TAG) &&
+			candidate.selectedImageFileName === (input.selectedImageFile?.name ?? null) &&
+			candidate.removeImage === input.removeImage &&
 			matchesItemIdList(candidate.links, input.content.latestLinks) &&
+			(input.selectedImageFile
+				? true
+				: matchesBytes(candidate.imagePayload, input.removeImage ? null : input.content.existingImagePayload)) &&
 			matchesContentRevisionDraft(candidate.draft, input.draft),
 		prepare: prepareContentRevision
 	});

@@ -10,11 +10,29 @@
 		title: '',
 		description: ''
 	});
+	let selectedImageFile: File | null = $state(null);
+	let selectedImagePreview: string | null = $state(null);
 	let saving = $state(false);
 	let error = $state('');
 	let notice = $state('');
 
 	const activeAccount = $derived(injectedAccounts.activeAccount);
+
+	async function fileToDataUrl(file: File) {
+		return await new Promise<string>((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(String(reader.result ?? ''));
+			reader.onerror = () => reject(reader.error ?? new Error('Failed to read image.'));
+			reader.readAsDataURL(file);
+		});
+	}
+
+	async function handleImageChange(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0] ?? null;
+		selectedImageFile = file;
+		selectedImagePreview = file ? await fileToDataUrl(file) : null;
+	}
 
 	async function submitForum() {
 		error = '';
@@ -48,7 +66,8 @@
 				api: connections.api,
 				heliaNode: connections.heliaNode,
 				account: activeAccount,
-				draft
+				draft,
+				selectedImageFile
 			});
 			notice = 'Forum created successfully. Redirecting...';
 			await goto(resolve(`/item_id/${saved.itemIdHex}`));
@@ -90,6 +109,12 @@
 					<textarea class="textarea min-h-48 w-full" bind:value={draft.description} placeholder="What is this forum about?" disabled={saving}></textarea>
 				</label>
 
+				<label class="block space-y-2 text-sm">
+					<span class="font-medium">Forum image</span>
+					<input class="input w-full text-sm" type="file" accept="image/*" onchange={handleImageChange} disabled={saving} />
+					<p class="text-surface-700-300 text-xs">Images are re-encoded to JPEG and uploaded to IPFS as mipmap levels before publishing the forum item.</p>
+				</label>
+
 				<div class="flex flex-wrap gap-3">
 					<button class="btn variant-filled-primary" onclick={submitForum} disabled={!activeAccount || !connections.api || !connections.heliaNode || !connections.ipfsHasRequiredLocalConnection || saving}>
 						{#if saving}
@@ -103,6 +128,13 @@
 
 			<aside class="card space-y-4 p-4">
 				<p class="text-sm font-medium">Preview</p>
+				{#if selectedImagePreview}
+					<img src={selectedImagePreview} alt={draft.title.trim() || 'Forum image preview'} class="aspect-video w-full rounded-xl object-cover" />
+				{:else}
+					<div class="bg-surface-100-900 text-surface-700-300 flex aspect-video w-full items-center justify-center rounded-xl text-sm">
+						No image
+					</div>
+				{/if}
 				<div>
 					<h2 class="text-lg font-semibold">{draft.title.trim() || 'Untitled forum'}</h2>
 					<p class="text-surface-700-300 mt-2 text-sm whitespace-pre-wrap">{draft.description.trim() || 'No description yet.'}</p>

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import ContentTabs from '$lib/components/ContentTabs.svelte';
 	import { formatShortAddress, injectedAccounts } from '$lib/services/accounts.svelte';
@@ -19,6 +20,9 @@
 	let notice = $state('');
 	let content: LoadedContent | null = $state(null);
 	let draft: ContentRevisionDraft = $state({ title: '', body: '' });
+	let selectedImageFile: File | null = $state(null);
+	let selectedImagePreview: string | null = $state(null);
+	let removeImage = $state(false);
 	let loadRequest = 0;
 
 	const itemId = $derived(page.params.item_id);
@@ -38,11 +42,15 @@
 		loading = true;
 		error = '';
 		content = null;
+		selectedImageFile = null;
+		selectedImagePreview = null;
+		removeImage = false;
 		void loadContentByItemId(heliaNode, itemId, connections.api)
 			.then((value) => {
 				if (requestId !== loadRequest) return;
 				content = value;
 				draft = { title: value.title, body: value.bodyText };
+				selectedImagePreview = value.imagePreviewDataUrl;
 			})
 			.catch((value) => {
 				if (requestId !== loadRequest) return;
@@ -53,6 +61,29 @@
 				loading = false;
 			});
 	});
+
+	async function fileToDataUrl(file: File) {
+		return await new Promise<string>((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(String(reader.result ?? ''));
+			reader.onerror = () => reject(reader.error ?? new Error('Failed to read image.'));
+			reader.readAsDataURL(file);
+		});
+	}
+
+	async function handleImageChange(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0] ?? null;
+		selectedImageFile = file;
+		selectedImagePreview = file ? await fileToDataUrl(file) : content?.imagePreviewDataUrl ?? null;
+		removeImage = false;
+	}
+
+	function clearSelectedImage() {
+		selectedImageFile = null;
+		selectedImagePreview = null;
+		removeImage = true;
+	}
 
 	async function submitRevision() {
 		error = '';
@@ -82,10 +113,12 @@
 				heliaNode: connections.heliaNode,
 				account: activeAccount,
 				content,
-				draft
+				draft,
+				selectedImageFile,
+				removeImage
 			});
 			notice = 'Revision published. Redirecting...';
-			await goto(`/item_id/${content.itemIdHex}`);
+			await goto(resolve(`/item_id/${content.itemIdHex}`));
 		} catch (value) {
 			error = value instanceof Error ? value.message : String(value);
 		} finally {
@@ -161,6 +194,35 @@
 						disabled={saving}
 					></textarea>
 				</label>
+
+				<label class="block space-y-2 text-sm">
+					<span class="font-medium">Image</span>
+					<input class="input w-full text-sm" type="file" accept="image/*" onchange={handleImageChange} disabled={saving} />
+					<p class="text-surface-700-300 text-xs">Leave empty to keep the current image, choose a file to replace it, or remove it entirely.</p>
+				</label>
+
+				<div class="card space-y-4 p-4">
+					<p class="text-sm font-medium">Image preview</p>
+					{#if !removeImage && selectedImagePreview}
+						<img src={selectedImagePreview} alt={draft.title || 'Content image preview'} class="max-h-80 rounded-xl object-cover" />
+					{:else}
+						<div class="bg-surface-100-900 text-surface-700-300 flex aspect-video w-full items-center justify-center rounded-xl text-sm">
+							No image
+						</div>
+					{/if}
+					<div class="flex flex-wrap gap-3">
+						<button class="btn variant-outline" type="button" onclick={clearSelectedImage} disabled={saving || (removeImage || (!selectedImageFile && !content.imagePreviewDataUrl))}>
+							Remove image
+						</button>
+						<button class="btn variant-outline" type="button" onclick={() => {
+							selectedImageFile = null;
+							selectedImagePreview = content.imagePreviewDataUrl;
+							removeImage = false;
+						}} disabled={saving || (!selectedImageFile && !removeImage)}>
+							Reset image changes
+						</button>
+					</div>
+				</div>
 
 				<div class="flex flex-wrap gap-3">
 					<button

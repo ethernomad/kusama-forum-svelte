@@ -12,6 +12,7 @@ type ProtoWriter = InstanceType<typeof Writer>;
 
 import type { InjectedAccount } from './accounts.svelte';
 import { signAndFinalize, type SignableExtrinsic } from './chain-signing';
+import { buildImagePayload, previewDataUrlForImageMixin } from './content-images';
 import { getIndexedEvents } from './indexer.svelte';
 import { publishBytesToIpfs } from './ipfs-publish';
 import { resolvePreparedValue } from './prepared-publish';
@@ -25,7 +26,6 @@ const BODY_TEXT_MIXIN_ID = 0x2d382044;
 const IMAGE_MIXIN_ID = 0x045eee8c;
 const DEFAULT_LANGUAGE_TAG = 'en';
 const ITEM_ID_NAMESPACE = 1000;
-const JPEG_QUALITY = 0.82;
 
 type Bytes = Uint8Array<ArrayBufferLike>;
 
@@ -69,15 +69,6 @@ type MixinPayload = {
 type ItemMessage = {
 	contentTypeId: number;
 	mixinPayload: MixinPayload[];
-};
-
-type ImageMixinMessage = {
-	filename: string;
-	filesize: bigint;
-	ipfsHash: Bytes;
-	width: number;
-	height: number;
-	mipmapLevel: { filesize: bigint; ipfsHash: Bytes }[];
 };
 
 function u8a(bytes: Uint8Array): Bytes {
@@ -258,83 +249,6 @@ function decodeProfileMixin(bytes: Uint8Array): { accountType: number; location:
 	return { accountType, location };
 }
 
-function encodeMipmapLevelMessage(message: { filesize: bigint; ipfsHash: Bytes }): Bytes {
-	const writer = Writer.create();
-	writeUInt64Field(writer, 1, message.filesize);
-	writeBytesField(writer, 2, message.ipfsHash);
-	return writer.finish();
-}
-
-function decodeImageMixin(bytes: Uint8Array): ImageMixinMessage {
-	const reader = Reader.create(bytes);
-	const message: ImageMixinMessage = {
-		filename: '',
-		filesize: 0n,
-		ipfsHash: new Uint8Array(),
-		width: 0,
-		height: 0,
-		mipmapLevel: []
-	};
-
-	while (reader.pos < reader.len) {
-		const tag = reader.uint32();
-		switch (tag >>> 3) {
-			case 1:
-				message.filename = reader.string();
-				break;
-			case 2:
-				message.filesize = BigInt(reader.uint64().toString());
-				break;
-			case 3:
-				message.ipfsHash = u8a(reader.bytes());
-				break;
-			case 4:
-				message.width = reader.uint32();
-				break;
-			case 5:
-				message.height = reader.uint32();
-				break;
-			case 6: {
-				const inner = Reader.create(reader.bytes());
-				let filesize = 0n;
-				let ipfsHash: Bytes = new Uint8Array();
-				while (inner.pos < inner.len) {
-					const innerTag = inner.uint32();
-					switch (innerTag >>> 3) {
-						case 1:
-							filesize = BigInt(inner.uint64().toString());
-							break;
-						case 2:
-							ipfsHash = u8a(inner.bytes());
-							break;
-						default:
-							inner.skipType(innerTag & 7);
-					}
-				}
-				message.mipmapLevel.push({ filesize, ipfsHash });
-				break;
-			}
-			default:
-				reader.skipType(tag & 7);
-		}
-	}
-
-	return message;
-}
-
-function encodeImageMixin(message: ImageMixinMessage): Uint8Array {
-	const writer = Writer.create();
-	writeStringField(writer, 1, message.filename);
-	writeUInt64Field(writer, 2, message.filesize);
-	writeBytesField(writer, 3, message.ipfsHash);
-	writeUInt32Field(writer, 4, message.width);
-	writeUInt32Field(writer, 5, message.height);
-	for (const level of message.mipmapLevel) {
-		writer.uint32((6 << 3) | 2).bytes(encodeMipmapLevelMessage(level));
-	}
-	return writer.finish();
-}
-
 function findMixin(item: ItemMessage, mixinId: number): Bytes | null {
 	return item.mixinPayload.find((entry) => entry.mixinId === mixinId)?.payload ?? null;
 }
@@ -402,14 +316,6 @@ function cidToDigestHex(cid: CID): string {
 	return toHex(cid.multihash.digest);
 }
 
-function multihashBytesToCid(multihashBytes: Uint8Array): CID {
-	const digest = decodeDigest(multihashBytes);
-	if (digest.code !== 0x12) {
-		throw new Error('Unsupported image multihash algorithm.');
-	}
-	return CID.createV0(createDigest(0x12, digest.digest));
-}
-
 async function addIpfs(heliaNode: Helia, bytes: Uint8Array): Promise<CID> {
 	const { cid } = await publishBytesToIpfs(heliaNode, bytes);
 	return cid;
@@ -431,77 +337,6 @@ async function fetchIpfsBytesByCid(heliaNode: Helia, cid: CID): Promise<Bytes> {
 
 async function fetchIpfsDigestBytes(heliaNode: Helia, ipfsHashHex: string): Promise<Bytes> {
 	return fetchIpfsBytesByCid(heliaNode, digestHexToCid(ipfsHashHex));
-}
-
-async function openImageBitmapFromFile(file: File): Promise<ImageBitmap> {
-	return createImageBitmap(file);
-}
-
-async function renderJpeg(bitmap: ImageBitmap, width: number, height: number): Promise<Bytes> {
-	const canvas = document.createElement('canvas');
-	canvas.width = width;
-	canvas.height = height;
-	const ctx = canvas.getContext('2d');
-	if (!ctx) throw new Error('Canvas 2D context is unavailable.');
-	ctx.drawImage(bitmap, 0, 0, width, height);
-	const blob = await new Promise<Blob>((resolve, reject) => {
-		canvas.toBlob((value) => {
-			if (value) resolve(value);
-			else reject(new Error('Failed to encode JPEG preview.'));
-		}, 'image/jpeg', JPEG_QUALITY);
-	});
-	return new Uint8Array(await blob.arrayBuffer());
-}
-
-async function buildImagePayload(heliaNode: Helia, file: File): Promise<{ payload: Bytes; previewDataUrl: string }> {
-	const bitmap = await openImageBitmapFromFile(file);
-	try {
-		const width = bitmap.width;
-		const height = bitmap.height;
-		const mipmapLevel: { filesize: bigint; ipfsHash: Bytes }[] = [];
-		let previewDataUrl = '';
-		let level = 0;
-
-		while (true) {
-			const scale = 2 ** level;
-			const outWidth = Math.max(1, Math.round(width / scale));
-			const outHeight = Math.max(1, Math.round(height / scale));
-			const jpegBytes = await renderJpeg(bitmap, outWidth, outHeight);
-			if (!previewDataUrl) {
-				previewDataUrl = `data:image/jpeg;base64,${btoa(String.fromCharCode(...jpegBytes))}`;
-			}
-			const cid = await addIpfs(heliaNode, jpegBytes);
-			mipmapLevel.push({
-				filesize: BigInt(jpegBytes.length),
-				ipfsHash: u8a(cid.multihash.bytes)
-			});
-
-			if (outWidth <= 64 || outHeight <= 64) break;
-			level += 1;
-		}
-
-		return {
-			payload: encodeImageMixin({
-				filename: '',
-				filesize: 0n,
-				ipfsHash: new Uint8Array(),
-				width,
-				height,
-				mipmapLevel
-			}),
-			previewDataUrl
-		};
-	} finally {
-		bitmap.close();
-	}
-}
-
-async function previewDataUrlForImageMixin(heliaNode: Helia, payload: Bytes): Promise<string | null> {
-	const image = decodeImageMixin(payload);
-	const multihash = image.mipmapLevel[0]?.ipfsHash?.length ? image.mipmapLevel[0].ipfsHash : image.ipfsHash.length ? image.ipfsHash : null;
-	if (!multihash) return null;
-	const bytes = await fetchIpfsBytesByCid(heliaNode, multihashBytesToCid(multihash));
-	return `data:image/jpeg;base64,${btoa(String.fromCharCode(...bytes))}`;
 }
 
 function encodeProfileItem(draft: ProfileDraft, imagePayload: Bytes | null): Bytes {

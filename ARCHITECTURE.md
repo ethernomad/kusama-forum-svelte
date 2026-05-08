@@ -93,7 +93,8 @@ Key services:
 - `connections.svelte.ts` — chain, indexer, and Helia startup/status
 - `indexer.svelte.ts` — websocket client for indexed queries and subscriptions
 - `content.ts` — content encoding/decoding, loading, and publishing
-- `profile.ts` — profile-specific encoding/loading/publishing, including image processing
+- `profile.ts` — profile-specific encoding/loading/publishing
+- `content-images.ts` — shared image mixin encoding/decoding, JPEG conversion, mipmap generation, and IPFS preview loading used by both profile and forum content flows
 - `ipfs-publish.ts` — publish bytes to IPFS and coordinate local pinner ACKs
 - `ipfs-pinning-queue.svelte.ts` — persistent background queue for local pinner acknowledgements
 - `reactions.ts` — fetch and submit reactions
@@ -464,7 +465,7 @@ Flow:
 
 The profile flow is special because the account profile pallet maps an account to a profile item ID.
 
-The forum flow now uses a similar batched-create pattern, except its follow-up call targets `pallet-account-content` so the owner's account content list stays in sync with newly created forums.
+The forum flow now uses a similar batched-create pattern, except its follow-up call targets `pallet-account-content` so the owner's account content list stays in sync with newly created forums. Forum creation also supports an optional image using the same JPEG+mipmap IPFS image mixin approach as profiles.
 
 ### 2. Create forum
 
@@ -474,6 +475,7 @@ The forum flow now uses a similar batched-create pattern, except its follow-up c
 - flags: `FORUM_ITEM_FLAGS = 0x03` (revisionable + retractable)
 - no parents
 - no links
+- optionally re-encodes a selected forum image to JPEG, uploads mipmap levels to IPFS, and appends the image mixin to the forum payload
 - derives the future `item_id` locally from account + nonce before submission
 - batches `content.publishItem(...)` with `accountContent.addItem(itemId)` using `utility.batchAll(...)`
 - atomically records the newly created forum in the owner's `pallet-account-content` list
@@ -519,6 +521,8 @@ It verifies:
 - active account owns the item
 - item is revisionable
 
+Before submission it rebuilds the revision payload, preserving the current image mixin by default, allowing a newly selected image to replace it, or omitting the image mixin entirely when the user removes the image.
+
 Then it submits:
 
 - `content.publishRevision(itemId, latestLinks, [], revisionHash)`
@@ -544,7 +548,7 @@ The idea is:
 
 This is exposed through functions like:
 
-- `prepareForumSave()`
+- `prepareForumSave()` — including optional forum image processing and upload
 - `prepareContentRevision()`
 - `prepareProfileSave()`
 
@@ -875,6 +879,7 @@ A quick map of the most important files:
 
 - `src/lib/services/content.ts` — generic content encoding/decoding/load/save
 - `src/lib/services/profile.ts` — profile-specific content flow
+- `src/lib/services/content-images.ts` — shared content/profile image helper logic
 - `src/routes/forum-admin/+page.svelte` — forum admin page backed by account-content storage; each forum row links directly to its forum page and keeps item IDs hidden from the list
 - `src/lib/services/reactions.ts` — reaction load/save logic
 - `src/lib/services/chain-signing.ts` — generic extension signing helper
