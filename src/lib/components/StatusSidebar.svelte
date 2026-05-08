@@ -10,11 +10,17 @@
 	<AccountSelector />
 
 	<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-4">
-		<div class="mb-4 space-y-2">
+		<div class="space-y-2">
 			<a class="btn variant-outline w-full justify-start" href="/my-profile">My profile</a>
 			<a class="btn variant-outline w-full justify-start" href="/item_id">Item ID</a>
 			<a class="btn variant-outline w-full justify-start" href="/create-forum">Create forum</a>
 			<button class="btn variant-outline w-full justify-start" type="button" onclick={() => location.reload()}>Refresh page</button>
+		</div>
+	</section>
+
+	<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-4">
+		<div class="mb-4">
+			<h2 class="text-sm font-medium">Status</h2>
 		</div>
 		<div class="space-y-3 text-sm">
 			<div class="flex items-center justify-between gap-3">
