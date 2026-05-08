@@ -48,11 +48,6 @@
 		layout="sidebar"
 		class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-2 shadow-sm"
 	>
-		<Navigation.Header class="px-3 pb-2 pt-1">
-			<p class="text-xs font-medium uppercase tracking-wide text-surface-700-300">Menu</p>
-			<h2 class="mt-1 text-sm font-semibold">Forum workspace</h2>
-		</Navigation.Header>
-
 		<Navigation.Content>
 			<Navigation.Group class="space-y-1">
 				{#each menuItems as item (item.href ?? item.label)}
