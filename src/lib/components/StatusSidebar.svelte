@@ -14,7 +14,6 @@
 			<a class="btn variant-outline w-full justify-start" href="/my-profile">My profile</a>
 			<a class="btn variant-outline w-full justify-start" href="/item_id">Item ID</a>
 			<a class="btn variant-outline w-full justify-start" href="/create-forum">Create forum</a>
-			<a class="btn variant-outline w-full justify-start" href="/status">Status</a>
 			<button class="btn variant-outline w-full justify-start" type="button" onclick={() => location.reload()}>Refresh page</button>
 		</div>
 		<div class="space-y-3 text-sm">
@@ -34,13 +33,13 @@
 				<span class="text-surface-700-300">{#if connections.indexerLatestBlockNumber}#{connections.indexerLatestBlockNumber}{:else}—{/if}</span>
 			</div>
 
-			<div class="flex items-center justify-between gap-3">
+			<a class="flex items-center justify-between gap-3 rounded-lg transition-colors hover:bg-surface-100-900/60" href="/status" aria-label="IPFS status page">
 				<div class="flex items-center gap-3">
 					<span class={`h-3 w-3 rounded-full ${isConnected(connections.ipfsStatus) ? 'bg-green-500' : 'bg-red-500'}`}></span>
 					<span class="font-medium">IPFS</span>
 				</div>
 				<span class="text-surface-700-300">{connections.ipfsConnections}</span>
-			</div>
+			</a>
 		</div>
 	</section>
 
