@@ -187,6 +187,7 @@ That prevents accidental creation of multiple browser IPFS nodes during client-s
 
 The sidebar component, `src/lib/components/StatusSidebar.svelte`, reads this state and shows:
 
+- a browser-style navigation pane with Back and Forward buttons above the account picker
 - a Skeleton `Navigation` sidebar menu with permanent navigation/actions like My profile, Item ID, Create forum, and page refresh
 - a separate status pane with chain health, indexer health, and IPFS health
 - a link to the dedicated IPFS status page
@@ -852,7 +853,7 @@ A quick map of the most important files:
 ### App shell
 
 - `src/routes/+layout.svelte` — app bootstrap and layout
-- `src/lib/components/StatusSidebar.svelte` — sidebar menu plus status dashboard
+- `src/lib/components/StatusSidebar.svelte` — browser navigation pane, account picker, sidebar menu, and status dashboard
 - `src/lib/components/AccountSelector.svelte` — wallet/account picker
 
 ### Protocol connections

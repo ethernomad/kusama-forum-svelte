@@ -5,6 +5,9 @@
 	import AccountSelector from '$lib/components/AccountSelector.svelte';
 	import { connections } from '$lib/services/connections.svelte';
 
+	const goBack = () => history.back();
+	const goForward = () => history.forward();
+
 	type MenuHref = '/my-profile' | '/item_id' | '/create-forum';
 
 	type MenuItem = {
@@ -42,6 +45,30 @@
 </script>
 
 <div class="space-y-6 xl:sticky xl:top-6 xl:self-start">
+	<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-4">
+		<div class="grid grid-cols-2 gap-2">
+			<button
+				type="button"
+				onclick={goBack}
+				class="border-surface-200-800 bg-surface-50-950 hover:bg-surface-100-900 inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors"
+				aria-label="Go back"
+			>
+				<span aria-hidden="true">←</span>
+				<span>Back</span>
+			</button>
+
+			<button
+				type="button"
+				onclick={goForward}
+				class="border-surface-200-800 bg-surface-50-950 hover:bg-surface-100-900 inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors"
+				aria-label="Go forward"
+			>
+				<span>Forward</span>
+				<span aria-hidden="true">→</span>
+			</button>
+		</div>
+	</section>
+
 	<AccountSelector />
 
 	<Navigation
