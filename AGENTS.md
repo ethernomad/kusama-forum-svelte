@@ -15,3 +15,4 @@
 
 - When modifying the codebase, always try to refactor it to increase overall code quality.
 - When modifying the codebase, always keep the ARCHITECTURE.md file up to date.
+- Use Skeleton UI components whenever possible, especially for common UI patterns like menus, dropdowns, popovers, and dialogs.

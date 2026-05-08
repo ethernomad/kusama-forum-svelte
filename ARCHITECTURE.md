@@ -190,10 +190,13 @@ The sidebar component, `src/lib/components/StatusSidebar.svelte`, reads this sta
 - chain health
 - indexer health
 - IPFS health
-- local IPFS swarm target status
-- pinner queue counts
-- IPFS advertisement status
 - permanent navigation/actions like My profile, Item ID, Create forum, Status, and page refresh
+
+The dedicated status page, `src/routes/status/+page.svelte`, shows:
+
+- Helia swarm target status
+- pinner queue counts
+- local dial errors for the IPFS/Kubo connection
 
 So the sidebar is effectively the operator dashboard for the dapp.
 
