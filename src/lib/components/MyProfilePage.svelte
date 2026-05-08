@@ -1,13 +1,11 @@
 <script lang="ts">
-	import { formatAccountLabel, injectedAccounts } from '$lib/services/accounts.svelte';
+	import { injectedAccounts } from '$lib/services/accounts.svelte';
 	import { connections } from '$lib/services/connections.svelte';
 	import {
 		loadProfileContent,
 		loadProfileMetadata,
 		prepareProfileSave,
 		saveProfile,
-		ipfsDigestHexToCid,
-		shortHex,
 		type LoadedProfile,
 		type ProfileDraft
 	} from '$lib/services/profile';
@@ -190,7 +188,7 @@
 	}
 </script>
 
-<div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+<div class="space-y-6">
 	<section class="space-y-6 min-w-0">
 		<header class="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-dashed border-surface-200-800 p-6">
 			<div>
@@ -307,44 +305,4 @@
 			</div>
 		</section>
 	</section>
-
-	<aside class="space-y-6 min-w-0">
-		<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-4">
-			<h2 class="mb-3 text-base font-medium">Current profile</h2>
-			{#if !activeAccount}
-				<p class="text-surface-700-300 text-sm">Select an account to view or edit its profile.</p>
-			{:else}
-				<div class="space-y-3 text-sm">
-					{#if loadingProfile}
-						<p class="text-surface-700-300 text-xs">Refreshing indexed/IPFS content in the background...</p>
-					{/if}
-					<div>
-						<p class="text-surface-700-300 text-xs uppercase">Account</p>
-						<p class="mt-1 font-medium">{formatAccountLabel(activeAccount)}</p>
-						<p class="text-surface-700-300 mt-1 break-all text-xs">{activeAccount.address}</p>
-					</div>
-					<div>
-						<p class="text-surface-700-300 text-xs uppercase">Profile item</p>
-						<code class="mt-1 block text-xs">{shortHex(profile?.itemIdHex ?? null)}</code>
-					</div>
-					<div>
-						<p class="text-surface-700-300 text-xs uppercase">Latest revision</p>
-						<code class="mt-1 block break-all text-xs">{ipfsDigestHexToCid(profile?.revisionIpfsHashHex ?? null)}</code>
-					</div>
-					<div>
-						<p class="text-surface-700-300 text-xs uppercase">State</p>
-						<p class="mt-1">
-							{#if !profile?.exists}
-								Not created yet
-							{:else if profile.contentLoaded}
-								Published
-							{:else}
-								Published (content unavailable)
-							{/if}
-						</p>
-					</div>
-				</div>
-			{/if}
-		</section>
-	</aside>
 </div>
