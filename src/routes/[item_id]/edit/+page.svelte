@@ -11,6 +11,7 @@
 		type LoadedContent
 	} from '$lib/services/content';
 	import { connections } from '$lib/services/connections.svelte';
+	import { PUBLISH_NOTICE_PREPARING } from '$lib/services/publish-notices';
 
 	let loading = $state(false);
 	let saving = $state(false);
@@ -75,7 +76,7 @@
 
 		saving = true;
 		try {
-			notice = 'Publishing to IPFS, waiting for local pinner ACK, then opening the transaction...';
+			notice = PUBLISH_NOTICE_PREPARING;
 			await publishContentRevision({
 				api: connections.api,
 				heliaNode: connections.heliaNode,

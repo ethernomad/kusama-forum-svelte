@@ -9,6 +9,7 @@
 	} from '$lib/services/content';
 	import { injectedAccounts } from '$lib/services/accounts.svelte';
 	import { connections } from '$lib/services/connections.svelte';
+	import { PUBLISH_NOTICE_PREPARING } from '$lib/services/publish-notices';
 
 	let { forum }: { forum: LoadedContent } = $props();
 
@@ -65,7 +66,7 @@
 		}
 		categorySaving = true;
 		try {
-			categoryNotice = 'Publishing to IPFS, waiting for local pinner ACK, then opening the transaction...';
+			categoryNotice = PUBLISH_NOTICE_PREPARING;
 			await saveCategory({
 				api: connections.api,
 				heliaNode: connections.heliaNode,

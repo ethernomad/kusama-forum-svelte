@@ -3,6 +3,7 @@
 	import { loadCategoryForumPostsIncremental, saveForumPost, type ForumPost, type LoadedContent } from '$lib/services/content';
 	import { injectedAccounts } from '$lib/services/accounts.svelte';
 	import { connections } from '$lib/services/connections.svelte';
+	import { PUBLISH_NOTICE_PREPARING } from '$lib/services/publish-notices';
 
 	let { category }: { category: LoadedContent } = $props();
 
@@ -54,7 +55,7 @@
 		}
 		saving = true;
 		try {
-			notice = 'Publishing to IPFS, waiting for local pinner ACK, then opening the transaction...';
+			notice = PUBLISH_NOTICE_PREPARING;
 			const post = await saveForumPost({
 				api: connections.api,
 				heliaNode: connections.heliaNode,

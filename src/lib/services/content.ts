@@ -7,8 +7,10 @@ import protobuf from 'protobufjs/minimal';
 import { cryptoWaitReady, decodeAddress } from '@polkadot/util-crypto';
 
 import type { InjectedAccount } from './accounts.svelte';
+import { signAndFinalize, type SignableExtrinsic } from './chain-signing';
 import { getIndexedEvents } from './indexer.svelte';
-import { publishBytesToIpfsWithAck } from './ipfs-publish';
+import { publishBytesToIpfs } from './ipfs-publish';
+import { resolvePreparedValue } from './prepared-publish';
 
 const { Reader, Writer } = protobuf;
 type ProtoReader = InstanceType<typeof Reader>;
@@ -390,7 +392,7 @@ async function fetchIpfsDigestBytes(heliaNode: Helia, ipfsHashHex: string): Prom
 }
 
 async function uploadIpfsDigest(heliaNode: Helia, bytes: Uint8Array): Promise<string> {
-	const { cid } = await publishBytesToIpfsWithAck(heliaNode, bytes);
+	const { cid } = await publishBytesToIpfs(heliaNode, bytes);
 	return toHex(cid.multihash.digest);
 }
 
@@ -783,38 +785,61 @@ function encodeForumItem(draft: ForumDraft): Bytes {
 	return encodeContentItem(FORUM_CONTENT_TYPE_ID, draft.title, draft.description);
 }
 
-async function signAndFinalize(
-	extrinsic: { signAndSend: Function },
-	account: InjectedAccount
-): Promise<void> {
-	if (typeof window === 'undefined') {
-		throw new Error('Signing is only available in the browser.');
-	}
-	const { web3FromSource } = await import('@polkadot/extension-dapp');
-	const injector = await web3FromSource(String(account.meta.source ?? ''));
-	await new Promise<void>((resolve, reject) => {
-		let unsubscribe: (() => void) | undefined;
-		void extrinsic
-			.signAndSend(
-				account.address,
-				{ signer: injector.signer },
-				(result: { status: { isFinalized?: boolean }; dispatchError?: unknown }) => {
-					if (result.dispatchError) {
-						unsubscribe?.();
-						reject(new Error('Transaction failed on chain.'));
-						return;
-					}
-					if (result.status?.isFinalized) {
-						unsubscribe?.();
-						resolve();
-					}
-				}
-			)
-			.then((unsub: () => void) => {
-				unsubscribe = unsub;
-			})
-			.catch(reject);
+function equalJsonValue(left: unknown, right: unknown): boolean {
+	return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function matchesForumDraft(left: ForumDraft, right: ForumDraft): boolean {
+	return equalJsonValue(left, right);
+}
+
+function matchesContentRevisionDraft(left: ContentRevisionDraft, right: ContentRevisionDraft): boolean {
+	return equalJsonValue(left, right);
+}
+
+function matchesItemIdList(left: string[], right: string[]): boolean {
+	return equalJsonValue(left, right);
+}
+
+async function publishItemAndFinalize(params: {
+	api: ApiPromise;
+	account: InjectedAccount;
+	nonce: Uint8Array;
+	parents: Uint8Array[];
+	links: Uint8Array[];
+	flags: number;
+	revisionIpfsHashBytes: Uint8Array;
+}): Promise<void> {
+	const { api, account, nonce, parents, links, flags, revisionIpfsHashBytes } = params;
+	const publishItem = (
+		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
+	).content.publishItem(nonce, parents, flags, links, [], revisionIpfsHashBytes);
+	await signAndFinalize(publishItem as SignableExtrinsic, account);
+}
+
+async function saveEncodedContentItem(params: {
+	api: ApiPromise;
+	heliaNode: Helia;
+	account: InjectedAccount;
+	itemPayload: Uint8Array;
+	parents: string[];
+	links: string[];
+	flags: number;
+}): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
+	const { api, heliaNode, account, itemPayload, parents, links, flags } = params;
+	const revisionIpfsHashHex = await uploadIpfsDigest(heliaNode, itemPayload);
+	const nonce = crypto.getRandomValues(new Uint8Array(32));
+	const itemIdBytes = await deriveItemId(account.address, nonce);
+	await publishItemAndFinalize({
+		api,
+		account,
+		nonce,
+		parents: parents.map(hexToBytes),
+		links: links.map(hexToBytes),
+		flags,
+		revisionIpfsHashBytes: hexToBytes(revisionIpfsHashHex)
 	});
+	return { itemIdHex: toHex(itemIdBytes), revisionIpfsHashHex };
 }
 
 export async function prepareForumSave(params: {
@@ -840,15 +865,23 @@ export async function saveForum(params: {
 	prepared?: PreparedForumSave | null;
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
 	const { api, heliaNode, account, draft, prepared } = params;
-	const canReusePrepared =
-		prepared != null && JSON.stringify(prepared.draft) === JSON.stringify(draft);
-	const resolved = canReusePrepared ? prepared : await prepareForumSave({ heliaNode, draft });
+	const resolved = await resolvePreparedValue({
+		input: { heliaNode, draft },
+		prepared,
+		canReusePrepared: (candidate, input) => matchesForumDraft(candidate.draft, input.draft),
+		prepare: prepareForumSave
+	});
 	const nonce = crypto.getRandomValues(new Uint8Array(32));
 	const itemIdBytes = await deriveItemId(account.address, nonce);
-	const publishItem = (
-		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
-	).content.publishItem(nonce, [], FORUM_ITEM_FLAGS, [], [], resolved.revisionIpfsHashBytes);
-	await signAndFinalize(publishItem as { signAndSend: Function }, account);
+	await publishItemAndFinalize({
+		api,
+		account,
+		nonce,
+		parents: [],
+		links: [],
+		flags: FORUM_ITEM_FLAGS,
+		revisionIpfsHashBytes: resolved.revisionIpfsHashBytes
+	});
 	return {
 		itemIdHex: toHex(itemIdBytes),
 		revisionIpfsHashHex: resolved.revisionIpfsHashHex
@@ -863,22 +896,15 @@ export async function saveCategory(params: {
 	draft: CategoryDraft;
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
 	const { api, heliaNode, account, forumItemIdHex, draft } = params;
-	const itemPayload = encodeContentItem(CATEGORY_CONTENT_TYPE_ID, draft.title, draft.body);
-	const revisionIpfsHashHex = await uploadIpfsDigest(heliaNode, itemPayload);
-	const nonce = crypto.getRandomValues(new Uint8Array(32));
-	const itemIdBytes = await deriveItemId(account.address, nonce);
-	const publishItem = (
-		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
-	).content.publishItem(
-		nonce,
-		[hexToBytes(forumItemIdHex)],
-		CATEGORY_ITEM_FLAGS,
-		[],
-		[],
-		hexToBytes(revisionIpfsHashHex)
-	);
-	await signAndFinalize(publishItem as { signAndSend: Function }, account);
-	return { itemIdHex: toHex(itemIdBytes), revisionIpfsHashHex };
+	return await saveEncodedContentItem({
+		api,
+		heliaNode,
+		account,
+		itemPayload: encodeContentItem(CATEGORY_CONTENT_TYPE_ID, draft.title, draft.body),
+		parents: [forumItemIdHex],
+		links: [],
+		flags: CATEGORY_ITEM_FLAGS
+	});
 }
 
 export async function saveForumPost(params: {
@@ -889,22 +915,15 @@ export async function saveForumPost(params: {
 	draft: ForumPostDraft;
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
 	const { api, heliaNode, account, categoryItemIdHex, draft } = params;
-	const itemPayload = encodeContentItem(FORUM_POST_CONTENT_TYPE_ID, draft.title, draft.body);
-	const revisionIpfsHashHex = await uploadIpfsDigest(heliaNode, itemPayload);
-	const nonce = crypto.getRandomValues(new Uint8Array(32));
-	const itemIdBytes = await deriveItemId(account.address, nonce);
-	const publishItem = (
-		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
-	).content.publishItem(
-		nonce,
-		[],
-		FORUM_POST_ITEM_FLAGS,
-		[hexToBytes(categoryItemIdHex)],
-		[],
-		hexToBytes(revisionIpfsHashHex)
-	);
-	await signAndFinalize(publishItem as { signAndSend: Function }, account);
-	return { itemIdHex: toHex(itemIdBytes), revisionIpfsHashHex };
+	return await saveEncodedContentItem({
+		api,
+		heliaNode,
+		account,
+		itemPayload: encodeContentItem(FORUM_POST_CONTENT_TYPE_ID, draft.title, draft.body),
+		parents: [],
+		links: [categoryItemIdHex],
+		flags: FORUM_POST_ITEM_FLAGS
+	});
 }
 
 export async function saveComment(params: {
@@ -915,22 +934,15 @@ export async function saveComment(params: {
 	draft: CommentDraft;
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
 	const { api, heliaNode, account, parentItemIdHex, draft } = params;
-	const itemPayload = encodeContentItem(COMMENT_CONTENT_TYPE_ID, null, draft.body);
-	const revisionIpfsHashHex = await uploadIpfsDigest(heliaNode, itemPayload);
-	const nonce = crypto.getRandomValues(new Uint8Array(32));
-	const itemIdBytes = await deriveItemId(account.address, nonce);
-	const publishItem = (
-		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
-	).content.publishItem(
-		nonce,
-		[hexToBytes(parentItemIdHex)],
-		COMMENT_ITEM_FLAGS,
-		[],
-		[],
-		hexToBytes(revisionIpfsHashHex)
-	);
-	await signAndFinalize(publishItem as { signAndSend: Function }, account);
-	return { itemIdHex: toHex(itemIdBytes), revisionIpfsHashHex };
+	return await saveEncodedContentItem({
+		api,
+		heliaNode,
+		account,
+		itemPayload: encodeContentItem(COMMENT_CONTENT_TYPE_ID, null, draft.body),
+		parents: [parentItemIdHex],
+		links: [],
+		flags: COMMENT_ITEM_FLAGS
+	});
 }
 
 export async function prepareContentRevision(params: {
@@ -967,15 +979,16 @@ export async function publishContentRevision(params: {
 	const { api, heliaNode, account, content, draft, prepared } = params;
 	if (!canEditContent(content, account))
 		throw new Error('The active account cannot edit this content item.');
-	const canReusePrepared =
-		prepared != null &&
-		prepared.contentTypeId === content.contentTypeId &&
-		prepared.languageTag === (content.languageTag ?? DEFAULT_LANGUAGE_TAG) &&
-		JSON.stringify(prepared.links) === JSON.stringify(content.latestLinks) &&
-		JSON.stringify(prepared.draft) === JSON.stringify(draft);
-	const resolved = canReusePrepared
-		? prepared
-		: await prepareContentRevision({ heliaNode, content, draft });
+	const resolved = await resolvePreparedValue({
+		input: { heliaNode, content, draft },
+		prepared,
+		canReusePrepared: (candidate, input) =>
+			candidate.contentTypeId === input.content.contentTypeId &&
+			candidate.languageTag === (input.content.languageTag ?? DEFAULT_LANGUAGE_TAG) &&
+			matchesItemIdList(candidate.links, input.content.latestLinks) &&
+			matchesContentRevisionDraft(candidate.draft, input.draft),
+		prepare: prepareContentRevision
+	});
 	const publishRevision = (
 		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
 	).content.publishRevision(
@@ -984,7 +997,7 @@ export async function publishContentRevision(params: {
 		[],
 		resolved.revisionIpfsHashBytes
 	);
-	await signAndFinalize(publishRevision as { signAndSend: Function }, account);
+	await signAndFinalize(publishRevision as SignableExtrinsic, account);
 	return { itemIdHex: content.itemIdHex, revisionIpfsHashHex: resolved.revisionIpfsHashHex };
 }
 
@@ -996,7 +1009,7 @@ export async function retractItem(
 	const extrinsic = (
 		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
 	).content.retractItem(hexToBytes(itemIdHex));
-	await signAndFinalize(extrinsic as { signAndSend: Function }, account);
+	await signAndFinalize(extrinsic as SignableExtrinsic, account);
 }
 
 function isValidForumCategory(

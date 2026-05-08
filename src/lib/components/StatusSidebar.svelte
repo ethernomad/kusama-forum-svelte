@@ -1,9 +1,14 @@
 <script lang="ts">
 	import { connections } from '$lib/services/connections.svelte';
+	import { ipfsPinningQueue } from '$lib/services/ipfs-pinning-queue.svelte';
 	import { ipfsProvideStatus } from '$lib/services/ipfs-provide-status.svelte';
 
 	const isConnected = (status: string) =>
 		status === 'Connected' || status.startsWith('Running in browser') || status.startsWith('Connected to global IPFS');
+
+	const pendingPinCount = $derived.by(() =>
+		ipfsPinningQueue.entries.filter((entry) => entry.status === 'queued' || entry.status === 'sending' || entry.status === 'failed').length
+	);
 
 	const ipfsProvideMessage = $derived.by(() => {
 		if (ipfsProvideStatus.pending > 0) {
@@ -21,8 +26,9 @@
 
 <div class="space-y-6 xl:sticky xl:top-6 xl:self-start">
 	<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-4">
-		<div class="mb-4">
+		<div class="mb-4 space-y-2">
 			<a class="btn variant-outline w-full justify-start" href="/my-profile">My profile</a>
+			<a class="btn variant-outline w-full justify-start" href="/status">Status</a>
 		</div>
 		<div class="space-y-3 text-sm">
 			<div class="flex items-center justify-between gap-3">
@@ -55,6 +61,9 @@
 		<h2 class="mb-2 text-base font-medium">Profile status</h2>
 		<p class="text-surface-700-300">Profiles are encoded as the same protobuf item payload used by acuity-dioxus before publishing to IPFS and the chain.</p>
 		<p class={`mt-3 text-xs ${ipfsProvideStatus.lastError ? 'text-red-300' : 'text-surface-700-300'}`}>{ipfsProvideMessage}</p>
+		<p class="mt-2 text-xs text-surface-700-300">
+			Pinner queue: {pendingPinCount} pending · {ipfsPinningQueue.entries.filter((entry) => entry.status === 'acked').length} acked
+		</p>
 		{#if connections.ipfsLastLocalDialError}
 			<p class="mt-2 text-xs text-red-300">Local Kubo dial error: {connections.ipfsLastLocalDialError}</p>
 		{/if}

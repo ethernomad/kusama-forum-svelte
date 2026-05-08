@@ -11,8 +11,10 @@ type ProtoReader = InstanceType<typeof Reader>;
 type ProtoWriter = InstanceType<typeof Writer>;
 
 import type { InjectedAccount } from './accounts.svelte';
+import { signAndFinalize, type SignableExtrinsic } from './chain-signing';
 import { getIndexedEvents } from './indexer.svelte';
-import { publishBytesToIpfsWithAck } from './ipfs-publish';
+import { publishBytesToIpfs } from './ipfs-publish';
+import { resolvePreparedValue } from './prepared-publish';
 const PROFILE_ITEM_FLAGS = 0x01;
 const PROFILE_CONTENT_TYPE_ID = 4;
 const FORUM_CONTENT_TYPE_ID = 5;
@@ -104,6 +106,14 @@ function createEmptyProfile(): LoadedProfile {
 		contentLoaded: false,
 		contentError: null
 	};
+}
+
+function equalJsonValue(left: unknown, right: unknown): boolean {
+	return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function matchesProfileDraft(left: ProfileDraft, right: ProfileDraft): boolean {
+	return equalJsonValue(left, right);
 }
 
 function writeBytesField(writer: ProtoWriter, fieldNumber: number, value: Bytes) {
@@ -401,7 +411,7 @@ function multihashBytesToCid(multihashBytes: Uint8Array): CID {
 }
 
 async function addIpfs(heliaNode: Helia, bytes: Uint8Array): Promise<CID> {
-	const { cid } = await publishBytesToIpfsWithAck(heliaNode, bytes);
+	const { cid } = await publishBytesToIpfs(heliaNode, bytes);
 	return cid;
 }
 
@@ -671,32 +681,6 @@ export async function loadProfile(api: ApiPromise, heliaNode: Helia, address: st
 	return await loadProfileContent(heliaNode, metadata);
 }
 
-async function signAndFinalize(extrinsic: { signAndSend: Function }, account: InjectedAccount): Promise<void> {
-	if (typeof window === 'undefined') {
-		throw new Error('Profile signing is only available in the browser.');
-	}
-	const { web3FromSource } = await import('@polkadot/extension-dapp');
-	const injector = await web3FromSource(String(account.meta.source ?? ''));
-	await new Promise<void>((resolve, reject) => {
-		let unsubscribe: (() => void) | undefined;
-		void extrinsic
-			.signAndSend(account.address, { signer: injector.signer }, (result: { status: { isInBlock?: boolean; isFinalized?: boolean }; dispatchError?: unknown }) => {
-				if (result.dispatchError) {
-					unsubscribe?.();
-					reject(new Error('Transaction failed on chain.'));
-					return;
-				}
-				if (result.status?.isFinalized) {
-					unsubscribe?.();
-					resolve();
-				}
-			})
-			.then((unsub: () => void) => {
-				unsubscribe = unsub;
-			})
-			.catch(reject);
-	});
-}
 
 export async function prepareProfileSave(params: {
 	heliaNode: Helia;
@@ -734,14 +718,15 @@ export async function saveProfile(params: {
 	prepared?: PreparedProfileSave | null;
 }): Promise<SaveProfileResult> {
 	const { api, heliaNode, account, draft, existingItemIdHex, existingImagePayload, selectedImageFile, prepared } = params;
-	const canReusePrepared =
-		prepared != null &&
-		prepared.existingItemIdHex === existingItemIdHex &&
-		prepared.selectedImageFileName === (selectedImageFile?.name ?? null) &&
-		JSON.stringify(prepared.draft) === JSON.stringify(draft);
-	const resolved = canReusePrepared
-		? prepared
-		: await prepareProfileSave({ heliaNode, draft, existingItemIdHex, existingImagePayload, selectedImageFile });
+	const resolved = await resolvePreparedValue({
+		input: { heliaNode, draft, existingItemIdHex, existingImagePayload, selectedImageFile },
+		prepared,
+		canReusePrepared: (candidate, input) =>
+			candidate.existingItemIdHex === input.existingItemIdHex &&
+			candidate.selectedImageFileName === (input.selectedImageFile?.name ?? null) &&
+			matchesProfileDraft(candidate.draft, input.draft),
+		prepare: prepareProfileSave
+	});
 	const imagePayload = resolved.imagePayload;
 	const revisionIpfsHashHex = resolved.revisionIpfsHashHex;
 	const revisionIpfsHashBytes = resolved.revisionIpfsHashBytes;
@@ -754,7 +739,7 @@ export async function saveProfile(params: {
 			[],
 			revisionIpfsHashBytes
 		);
-		await signAndFinalize(extrinsic, account);
+		await signAndFinalize(extrinsic as SignableExtrinsic, account);
 		return {
 			exists: true,
 			itemIdHex: existingItemIdHex,
@@ -782,7 +767,7 @@ export async function saveProfile(params: {
 		publishItem,
 		setProfile
 	]);
-	await signAndFinalize(batch, account);
+	await signAndFinalize(batch as SignableExtrinsic, account);
 
 	return {
 		exists: true,

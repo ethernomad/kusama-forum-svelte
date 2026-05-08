@@ -17,6 +17,8 @@ import {
 	DEFAULT_LOCAL_IPFS_MULTIADDRS,
 	hasDefaultLocalIpfsConnection
 } from './ipfs-local';
+import { flushPendingCidAcks } from './ipfs-pinning-queue.svelte';
+import { provideAndAckCid } from './ipfs-publish';
 
 type GlobalHeliaState = typeof globalThis & {
 	__kusamaForumHeliaNode?: Helia | null;
@@ -185,6 +187,7 @@ async function connectHeliaToLocalIpfs(node: Helia): Promise<void> {
 		try {
 			await node.libp2p.dial(multiaddr(target));
 			connections.ipfsLastLocalDialError = '';
+			void flushPendingCidAcks(node, provideAndAckCid);
 			return;
 		} catch (error) {
 			lastError = error;
@@ -307,10 +310,14 @@ export function startAppConnections() {
 			connections.ipfsPeerId = node.libp2p.peerId.toString();
 			updateIpfsStatus(node);
 			void connectHeliaToLocalIpfs(node);
+			void flushPendingCidAcks(node, provideAndAckCid);
 
 			ipfsConnectionInterval = setInterval(() => {
 				if (!active) return;
 				updateIpfsStatus(node);
+				if (connections.ipfsHasRequiredLocalConnection) {
+					void flushPendingCidAcks(node, provideAndAckCid);
+				}
 			}, IPFS_STATUS_INTERVAL_MS);
 			localReconnectInterval = setInterval(() => {
 				if (!active) return;

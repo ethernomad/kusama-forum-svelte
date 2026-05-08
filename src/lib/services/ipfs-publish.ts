@@ -1,13 +1,14 @@
 import { unixfs } from '@helia/unixfs';
 import { multiaddr } from '@multiformats/multiaddr';
 import type { Helia } from 'helia';
-import type { CID } from 'multiformats/cid';
+import { CID } from 'multiformats/cid';
 
 import {
 	beginIpfsProvide,
 	completeIpfsProvide,
 	failIpfsProvide
 } from './ipfs-provide-status.svelte';
+import { enqueueCidForAck } from './ipfs-pinning-queue.svelte';
 import {
 	defaultLocalIpfsConnectionAddress,
 	hasDefaultLocalIpfsConnection
@@ -17,7 +18,7 @@ const ACK_PROTOCOL = '/x/acuity/ack/1.0.0';
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
-type PublishResult = {
+export type PublishResult = {
 	cid: CID;
 };
 
@@ -27,7 +28,7 @@ export function assertDefaultLocalIpfsConnection(heliaNode: Helia): void {
 	}
 }
 
-export async function publishBytesToIpfsWithAck(
+export async function publishBytesToIpfs(
 	heliaNode: Helia,
 	bytes: Uint8Array
 ): Promise<PublishResult> {
@@ -37,16 +38,16 @@ export async function publishBytesToIpfsWithAck(
 		cidVersion: 0,
 		rawLeaves: false
 	});
-	await provideAndAckCid(heliaNode, cid);
+	enqueueCidForAck(cid.toString());
 	return { cid };
 }
 
-export async function provideAndAckCid(heliaNode: Helia, cid: CID): Promise<void> {
+export async function provideAndAckCid(heliaNode: Helia, cid: CID | string): Promise<void> {
 	assertDefaultLocalIpfsConnection(heliaNode);
-	const cidText = cid.toString();
+	const cidText = typeof cid === 'string' ? cid : cid.toString();
 	beginIpfsProvide(cidText);
 	try {
-		await heliaNode.routing.provide(cid);
+		await heliaNode.routing.provide(typeof cid === 'string' ? CID.parse(cidText) : cid);
 		await pushCidAck(heliaNode, cidText);
 		completeIpfsProvide(cidText);
 	} catch (error) {

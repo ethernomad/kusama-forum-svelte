@@ -3,6 +3,7 @@
 	import { formatShortAddress, injectedAccounts } from '$lib/services/accounts.svelte';
 	import { connections } from '$lib/services/connections.svelte';
 	import { saveForum, type ForumDraft } from '$lib/services/content';
+	import { PUBLISH_NOTICE_PREPARING } from '$lib/services/publish-notices';
 
 	let draft: ForumDraft = $state({
 		title: '',
@@ -40,7 +41,7 @@
 		}
 
 		saving = true;
-		notice = 'Publishing to IPFS, waiting for local pinner ACK, then opening the transaction...';
+		notice = PUBLISH_NOTICE_PREPARING;
 		try {
 			const saved = await saveForum({
 				api: connections.api,

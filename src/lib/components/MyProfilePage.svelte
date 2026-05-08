@@ -11,6 +11,10 @@
 		type LoadedProfile,
 		type ProfileDraft
 	} from '$lib/services/profile';
+	import {
+		PUBLISH_NOTICE_AWAITING_SIGNATURE,
+		PUBLISH_NOTICE_PREPARING
+	} from '$lib/services/publish-notices';
 
 	let contentLookupId = $state('');
 
@@ -157,7 +161,7 @@
 
 		savingProfile = true;
 		try {
-			profileNotice = 'Publishing to IPFS, waiting for local pinner ACK...';
+			profileNotice = PUBLISH_NOTICE_PREPARING;
 			const prepared = await prepareProfileSave({
 				heliaNode: connections.heliaNode,
 				draft,
@@ -165,7 +169,7 @@
 				existingImagePayload,
 				selectedImageFile
 			});
-			profileNotice = 'IPFS publish confirmed. Approve the wallet transaction to save the profile on chain...';
+			profileNotice = PUBLISH_NOTICE_AWAITING_SIGNATURE;
 			const saved = await saveProfile({
 				api: connections.api,
 				heliaNode: connections.heliaNode,
