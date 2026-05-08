@@ -120,9 +120,6 @@
 			<h1 class="mt-1 text-2xl font-semibold">{contentTypeLabel(content)}</h1>
 			<p class="mt-2 text-sm break-all text-surface-700-300">{itemId}</p>
 		</div>
-		<div class="flex gap-3">
-			<a class="variant-outline btn" href={resolve('/my-profile')}>My profile</a>
-		</div>
 	</header>
 
 	{#if content}
