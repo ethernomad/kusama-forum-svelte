@@ -79,7 +79,7 @@ Important routes:
 - `src/routes/item_id/[item_id]/+page.svelte` — generic content viewer for any item
 - `src/routes/item_id/[item_id]/edit/+page.svelte` — revision editor for editable items
 - `src/routes/item_id/[item_id]/debug/+page.svelte` — low-level inspection of chain/indexed/IPFS state
-- `src/routes/status/+page.svelte` — IPFS-specific status page with pinner queue details
+- `src/routes/status/ipfs/+page.svelte` — IPFS-specific status page with pinner queue details
 
 ### 2. Stateful client services
 
@@ -191,7 +191,7 @@ The sidebar component, `src/lib/components/StatusSidebar.svelte`, reads this sta
 - a separate status pane with chain health, indexer health, and IPFS health
 - a link to the dedicated IPFS status page
 
-The dedicated status page, `src/routes/status/+page.svelte`, is specifically for IPFS and shows:
+The dedicated status page, `src/routes/status/ipfs/+page.svelte`, is specifically for IPFS and shows:
 
 - Helia swarm target status
 - pinner queue counts
@@ -884,7 +884,7 @@ A quick map of the most important files:
 - `src/routes/item_id/[item_id]/+page.svelte`
 - `src/routes/item_id/[item_id]/edit/+page.svelte`
 - `src/routes/item_id/[item_id]/debug/+page.svelte`
-- `src/routes/status/+page.svelte`
+- `src/routes/status/ipfs/+page.svelte`
 
 ---
 

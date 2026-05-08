@@ -39,7 +39,7 @@
 				<span class="text-surface-700-300">{#if connections.indexerLatestBlockNumber}#{connections.indexerLatestBlockNumber}{:else}—{/if}</span>
 			</div>
 
-			<a class="flex items-center justify-between gap-3 rounded-lg transition-colors hover:bg-surface-100-900/60" href="/status" aria-label="IPFS status page">
+			<a class="flex items-center justify-between gap-3 rounded-lg transition-colors hover:bg-surface-100-900/60" href="/status/ipfs" aria-label="IPFS status page">
 				<div class="flex items-center gap-3">
 					<span class={`h-3 w-3 rounded-full ${isConnected(connections.ipfsStatus) ? 'bg-green-500' : 'bg-red-500'}`}></span>
 					<span class="font-medium">IPFS</span>
