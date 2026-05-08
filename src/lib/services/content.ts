@@ -508,7 +508,7 @@ type DecodedEvent = {
 };
 
 async function fetchLatestRevisionHash(itemIdHex: string): Promise<string> {
-	const response = await indexerRequest<{ decodedEvents?: DecodedEvent[] }>('acuity_getEvents', {
+	const response = await indexerRequest<{ events?: DecodedEvent[] }>('acuity_getEvents', {
 		key: {
 			type: 'Custom',
 			value: {
@@ -520,7 +520,7 @@ async function fetchLatestRevisionHash(itemIdHex: string): Promise<string> {
 		limit: 100
 	});
 
-	const entries = (response.decodedEvents ?? [])
+	const entries = (response.events ?? [])
 		.filter((entry) => {
 			const eventItemId = normalizeItemId(entry.event.fields.item_id ?? entry.event.fields.itemId);
 			return (
@@ -569,11 +569,11 @@ function extractAccountIds(value: unknown): string[] {
 }
 
 export async function fetchContentRevisions(itemIdHex: string): Promise<ContentRevisionMeta[]> {
-	const response = await indexerRequest<{ decodedEvents?: DecodedEvent[] }>('acuity_getEvents', {
+	const response = await indexerRequest<{ events?: DecodedEvent[] }>('acuity_getEvents', {
 		key: { type: 'Custom', value: { name: 'item_id', kind: 'bytes32', value: itemIdHex } },
 		limit: 100
 	});
-	const entries = (response.decodedEvents ?? [])
+	const entries = (response.events ?? [])
 		.filter((entry) => {
 			const eventItemId = normalizeItemId(entry.event.fields.item_id ?? entry.event.fields.itemId);
 			return (
@@ -636,12 +636,12 @@ export async function loadContentItemDebug(
 	const [state, revisions, response] = await Promise.all([
 		fetchItemState(api, normalizedItemIdHex),
 		fetchContentRevisions(normalizedItemIdHex),
-		indexerRequest<{ decodedEvents?: DecodedEvent[] }>('acuity_getEvents', {
+		indexerRequest<{ events?: DecodedEvent[] }>('acuity_getEvents', {
 			key: { type: 'Custom', value: { name: 'item_id', kind: 'bytes32', value: normalizedItemIdHex } },
 			limit: 100
 		})
 	]);
-	const publishItem = (response.decodedEvents ?? []).find((entry) => {
+	const publishItem = (response.events ?? []).find((entry) => {
 		const eventItemId = normalizeItemId(entry.event.fields.item_id ?? entry.event.fields.itemId);
 		return entry.event.palletName === 'Content' && entry.event.eventName === 'PublishItem' && eventItemId?.toLowerCase() === normalizedItemIdHex.toLowerCase();
 	});
@@ -712,11 +712,11 @@ async function fetchItemState(
 	}
 
 	if (!ownerHex) {
-		const response = await indexerRequest<{ decodedEvents?: DecodedEvent[] }>('acuity_getEvents', {
+		const response = await indexerRequest<{ events?: DecodedEvent[] }>('acuity_getEvents', {
 			key: { type: 'Custom', value: { name: 'item_id', kind: 'bytes32', value: itemIdHex } },
 			limit: 100
 		});
-		const publishItem = (response.decodedEvents ?? []).find(
+		const publishItem = (response.events ?? []).find(
 			(entry) => entry.event.palletName === 'Content' && entry.event.eventName === 'PublishItem'
 		);
 		ownerHex = accountIdToHex(publishItem?.event.fields.owner);
@@ -1060,12 +1060,12 @@ function eventOrderValue(entry: DecodedEvent): number {
 
 async function loadPublishedChildren(parentItemIdHex: string, limit = 500): Promise<PublishedChild[]> {
 	const normalizedParent = parentItemIdHex.toLowerCase();
-	const response = await indexerRequest<{ decodedEvents?: DecodedEvent[] }>('acuity_getEvents', {
+	const response = await indexerRequest<{ events?: DecodedEvent[] }>('acuity_getEvents', {
 		key: { type: 'Custom', value: { name: 'item_id', kind: 'bytes32', value: parentItemIdHex } },
 		limit
 	});
 	const children = new Map<string, PublishedChild>();
-	for (const entry of response.decodedEvents ?? []) {
+	for (const entry of response.events ?? []) {
 		if (entry.event.palletName !== 'Content' || entry.event.eventName !== 'PublishItem') continue;
 		const itemIdHex = normalizeItemId(entry.event.fields.item_id ?? entry.event.fields.itemId);
 		if (!itemIdHex || itemIdHex.toLowerCase() === normalizedParent) continue;
@@ -1135,13 +1135,13 @@ function isValidForumPost(
 
 async function loadCategoryPostIds(category: LoadedContent): Promise<string[]> {
 	if (category.contentType !== 'category') return [];
-	const response = await indexerRequest<{ decodedEvents?: DecodedEvent[] }>('acuity_getEvents', {
+	const response = await indexerRequest<{ events?: DecodedEvent[] }>('acuity_getEvents', {
 		key: { type: 'Custom', value: { name: 'item_id', kind: 'bytes32', value: category.itemIdHex } },
 		limit: 500
 	});
 	return [
 		...new Set(
-			(response.decodedEvents ?? [])
+			(response.events ?? [])
 				.filter(
 					(entry) =>
 						entry.event.palletName === 'Content' && entry.event.eventName === 'PublishRevision'

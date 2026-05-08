@@ -544,7 +544,7 @@ type DecodedEvent = {
 };
 
 async function fetchLatestRevisionHash(itemIdHex: string): Promise<string> {
-	const response = await indexerRequest<{ decodedEvents?: DecodedEvent[] }>('acuity_getEvents', {
+	const response = await indexerRequest<{ events?: DecodedEvent[] }>('acuity_getEvents', {
 		key: {
 			type: 'Custom',
 			value: {
@@ -556,7 +556,7 @@ async function fetchLatestRevisionHash(itemIdHex: string): Promise<string> {
 		limit: 100
 	});
 
-	const entries = (response.decodedEvents ?? [])
+	const entries = (response.events ?? [])
 		.filter((entry) => entry.event.palletName === 'Content' && entry.event.eventName === 'PublishRevision')
 		.map((entry) => {
 			const fields = entry.event.fields;

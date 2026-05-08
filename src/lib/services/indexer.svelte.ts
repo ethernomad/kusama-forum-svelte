@@ -9,6 +9,24 @@ type CustomBytes32Key = {
 	};
 };
 
+type CompositeKeyPart =
+	| { kind: 'bytes32'; value: string }
+	| { kind: 'u32'; value: number }
+	| { kind: 'u64' | 'u128'; value: string }
+	| { kind: 'string'; value: string }
+	| { kind: 'bool'; value: boolean };
+
+export type CustomCompositeKey = {
+	type: 'Custom';
+	value: {
+		name: string;
+		kind: 'composite';
+		value: CompositeKeyPart[];
+	};
+};
+
+export type IndexerEventKey = CustomBytes32Key | CustomCompositeKey;
+
 export type DecodedIndexerEvent = {
 	blockNumber?: number;
 	eventIndex?: number;
@@ -30,8 +48,8 @@ type IndexerSubscriptionMessage = {
 		result?: {
 			type?: string;
 			data?: unknown;
-			key?: CustomBytes32Key;
-			decodedEvent?: DecodedIndexerEvent | null;
+			key?: IndexerEventKey;
+			event?: DecodedIndexerEvent | null;
 			[key: string]: unknown;
 		};
 	};
@@ -46,7 +64,7 @@ type PendingRequest = {
 };
 
 type EventListener = {
-	key: CustomBytes32Key;
+	key: IndexerEventKey;
 	callback: (message: IndexerSubscriptionMessage) => void;
 	subscriptionId: string | null;
 	pendingRequestId: number | null;
@@ -313,10 +331,10 @@ export function itemIdIndexerKey(itemIdHex: string): CustomBytes32Key {
 export function getSubscriptionDecodedEvent(message: IndexerSubscriptionMessage): DecodedIndexerEvent | null {
 	const result = message.params?.result;
 	if (result?.type !== 'event') return null;
-	return result.decodedEvent ?? null;
+	return result.event ?? null;
 }
 
-export function subscribeIndexerEvents(key: CustomBytes32Key, callback: (message: IndexerSubscriptionMessage) => void) {
+export function subscribeIndexerEvents(key: IndexerEventKey, callback: (message: IndexerSubscriptionMessage) => void) {
 	ensureStarted();
 	const id = nextListenerId++;
 	eventListeners.set(id, { key, callback, subscriptionId: null, pendingRequestId: null });
