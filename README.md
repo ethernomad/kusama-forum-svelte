@@ -1,42 +1,33 @@
-# sv
+# Kusama Forum Svelte
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+Svelte frontend for the Kusama Forum dapp.
 
-## Creating a project
+## Documentation
 
-If you're seeing this, you've probably already done this step. Congrats!
+- [Architecture](./ARCHITECTURE.md) — detailed explanation of the app's runtime model, data flow, IPFS publishing flow, indexer usage, and UI structure
 
-```sh
-# create a new project
-npx sv create my-app
-```
+## Development
 
-To recreate this project with the same configuration:
+Install dependencies:
 
 ```sh
-# recreate this project
-pnpm dlx sv@0.15.2 create --template minimal --types ts --add prettier eslint vitest="usages:unit,component" tailwindcss="plugins:typography,forms" --install pnpm kusama-forum-svelte
+pnpm install
 ```
 
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+Start the dev server:
 
 ```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+pnpm run dev
 ```
 
-## Building
-
-To create a production version of your app:
+Build the app:
 
 ```sh
-npm run build
+pnpm run build
 ```
 
-You can preview the production build with `npm run preview`.
+Preview the production build:
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+```sh
+pnpm run preview
+```
