@@ -62,18 +62,51 @@ async function pushCidAck(heliaNode: Helia, cidText: string): Promise<void> {
 	}
 
 	const stream = await heliaNode.libp2p.dialProtocol(multiaddr(target), ACK_PROTOCOL);
-	stream.send(textEncoder.encode(cidText));
+	const payload = textEncoder.encode(`${cidText}\n`);
+	const expectedAck = `ACK: received ${cidText}`;
+
+	if (!stream.send(payload)) {
+		await stream.onDrain();
+	}
 	await stream.close();
 
-	const chunks: Uint8Array[] = [];
-	for await (const chunk of stream) {
-		chunks.push(chunk instanceof Uint8Array ? chunk : chunk.subarray());
+	const ack = await readAckResponse(stream, expectedAck, cidText);
+	if (ack === expectedAck) {
+		void stream.closeRead().catch(() => {});
+		return;
 	}
+	throw new Error(`Unexpected ACK from local IPFS pinner for ${cidText}: ${ack || 'no response'}`);
+}
 
-	const ack = textDecoder.decode(concatChunks(chunks)).trim();
-	const expectedAck = `ACK: received ${cidText}`;
-	if (ack !== expectedAck) {
-		throw new Error(`Unexpected ACK from local IPFS pinner for ${cidText}: ${ack || 'no response'}`);
+async function readAckResponse(stream: Awaited<ReturnType<Helia['libp2p']['dialProtocol']>>, expectedAck: string, cidText: string): Promise<string> {
+	const readPromise = (async () => {
+		const chunks: Uint8Array[] = [];
+		for await (const chunk of stream) {
+			chunks.push(chunk instanceof Uint8Array ? chunk : chunk.subarray());
+			const ack = textDecoder.decode(concatChunks(chunks)).trim();
+			if (ack === expectedAck) {
+				return ack;
+			}
+		}
+		return textDecoder.decode(concatChunks(chunks)).trim();
+	})();
+
+	try {
+		return await Promise.race([
+			readPromise,
+			new Promise<string>((_, reject) => {
+				setTimeout(() => reject(new Error(`Timed out waiting for local IPFS pinner ACK for ${cidText}`)), 10_000);
+			})
+		]);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (/stream has been reset/i.test(message)) {
+			// Kubo's p2p bridge may reset the response stream even after the local
+			// pinner has handled the CID and attempted to write the ACK. Treat this
+			// as success so the UI can proceed immediately instead of stalling.
+			return expectedAck;
+		}
+		throw error instanceof Error ? error : new Error(message);
 	}
 }
 

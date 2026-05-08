@@ -4,6 +4,7 @@
 	import {
 		loadProfileContent,
 		loadProfileMetadata,
+		prepareProfileSave,
 		saveProfile,
 		ipfsDigestHexToCid,
 		shortHex,
@@ -156,7 +157,15 @@
 
 		savingProfile = true;
 		try {
-			profileNotice = 'Publishing to IPFS, waiting for local pinner ACK, then opening the transaction...';
+			profileNotice = 'Publishing to IPFS, waiting for local pinner ACK...';
+			const prepared = await prepareProfileSave({
+				heliaNode: connections.heliaNode,
+				draft,
+				existingItemIdHex: profile?.itemIdHex ?? null,
+				existingImagePayload,
+				selectedImageFile
+			});
+			profileNotice = 'IPFS publish confirmed. Approve the wallet transaction to save the profile on chain...';
 			const saved = await saveProfile({
 				api: connections.api,
 				heliaNode: connections.heliaNode,
@@ -164,7 +173,8 @@
 				draft,
 				existingItemIdHex: profile?.itemIdHex ?? null,
 				existingImagePayload,
-				selectedImageFile
+				selectedImageFile,
+				prepared
 			});
 			applyProfile(saved);
 			profileNotice = saved.itemIdHex === profile?.itemIdHex ? 'Profile revision published successfully.' : 'Profile created successfully.';
