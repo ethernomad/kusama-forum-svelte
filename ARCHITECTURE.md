@@ -189,7 +189,7 @@ That prevents accidental creation of multiple browser IPFS nodes during client-s
 The sidebar component, `src/lib/components/StatusSidebar.svelte`, reads this state and shows:
 
 - a browser-style navigation pane with Back and Forward buttons above the account picker
-- a Skeleton `Navigation` sidebar menu with permanent navigation/actions like My profile, Item ID, Create forum, and page refresh
+- a Skeleton `Navigation` sidebar menu with permanent navigation links like My profile, Item ID, and Forum admin
 - a separate status pane with chain health, indexer health, and IPFS health
 - a link to the dedicated IPFS status page
 - Skeleton-styled form controls across the main publishing and editing flows (`input`, `textarea`, `select`, and `btn` classes) for consistent dapp theming

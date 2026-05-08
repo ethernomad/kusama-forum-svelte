@@ -11,10 +11,9 @@
 	type MenuHref = '/my-profile' | '/item_id' | '/forum-admin';
 
 	type MenuItem = {
-		href?: MenuHref;
+		href: MenuHref;
 		label: string;
 		description: string;
-		action?: () => void;
 	};
 
 	const menuItems: MenuItem[] = [
@@ -32,11 +31,6 @@
 			href: '/forum-admin',
 			label: 'Forum admin',
 			description: 'View your forums and create a new one'
-		},
-		{
-			label: 'Refresh page',
-			description: 'Reload the app and reconnect services',
-			action: () => location.reload()
 		}
 	];
 
@@ -77,41 +71,25 @@
 	>
 		<Navigation.Content>
 			<Navigation.Group class="space-y-1">
-				{#each menuItems as item (item.href ?? item.label)}
-					{#if item.href}
-						<Navigation.TriggerAnchor
-							href={resolve(item.href)}
-							aria-current={page.url.pathname === item.href ? 'page' : undefined}
-							class={[
-								'block rounded-lg border px-3 py-3 transition-colors',
-								page.url.pathname === item.href
-									? 'border-primary-500/30 bg-primary-500/10'
-									: 'border-transparent hover:bg-surface-100-900'
-							]}
-						>
-							<div class="flex items-start justify-between gap-3">
-								<div class="min-w-0">
-									<p class="text-sm font-medium">{item.label}</p>
-									<p class="text-surface-700-300 mt-1 text-xs">{item.description}</p>
-								</div>
-								<span class="text-surface-700-300 text-xs">→</span>
+				{#each menuItems as item (item.href)}
+					<Navigation.TriggerAnchor
+						href={resolve(item.href)}
+						aria-current={page.url.pathname === item.href ? 'page' : undefined}
+						class={[
+							'block rounded-lg border px-3 py-3 transition-colors',
+							page.url.pathname === item.href
+								? 'border-primary-500/30 bg-primary-500/10'
+								: 'border-transparent hover:bg-surface-100-900'
+						]}
+					>
+						<div class="flex items-start justify-between gap-3">
+							<div class="min-w-0">
+								<p class="text-sm font-medium">{item.label}</p>
+								<p class="text-surface-700-300 mt-1 text-xs">{item.description}</p>
 							</div>
-						</Navigation.TriggerAnchor>
-					{:else}
-						<button
-							type="button"
-							class="hover:bg-surface-100-900 block w-full rounded-lg border border-transparent px-3 py-3 text-left transition-colors"
-							onclick={item.action}
-						>
-							<div class="flex items-start justify-between gap-3">
-								<div class="min-w-0">
-									<p class="text-sm font-medium">{item.label}</p>
-									<p class="text-surface-700-300 mt-1 text-xs">{item.description}</p>
-								</div>
-								<span class="text-surface-700-300 text-xs">↻</span>
-							</div>
-						</button>
-					{/if}
+							<span class="text-surface-700-300 text-xs">→</span>
+						</div>
+					</Navigation.TriggerAnchor>
 				{/each}
 			</Navigation.Group>
 		</Navigation.Content>
