@@ -63,7 +63,7 @@
 				categoryItemIdHex: category.itemIdHex,
 				draft
 			});
-			await goto(`/${encodeURIComponent(post.itemIdHex)}`);
+			await goto(`/item_id/${encodeURIComponent(post.itemIdHex)}`);
 		} catch (value) {
 			error = value instanceof Error ? value.message : String(value);
 		} finally {
@@ -99,7 +99,7 @@
 	<div class="mt-4 space-y-3">
 		{#each posts as post}
 			<article class="rounded-lg border border-surface-200-800 bg-surface-100-900 p-4">
-				<a class="text-lg font-semibold hover:underline" href={`/${encodeURIComponent(post.itemIdHex)}`}>{post.title || 'Untitled post'}</a>
+				<a class="text-lg font-semibold hover:underline" href={`/item_id/${encodeURIComponent(post.itemIdHex)}`}>{post.title || 'Untitled post'}</a>
 			</article>
 		{:else}
 			<p class="text-surface-700-300 text-sm">{loading ? 'Loading posts…' : 'No posts found.'}</p>

@@ -55,7 +55,7 @@
 	{:else}
 		<ul class="mt-3 space-y-2 text-sm">
 			{#each categories as category}
-				<li><a class="break-all hover:underline" href={`/${encodeURIComponent(category.itemIdHex)}`}>{category.title}</a></li>
+				<li><a class="break-all hover:underline" href={`/item_id/${encodeURIComponent(category.itemIdHex)}`}>{category.title}</a></li>
 			{/each}
 		</ul>
 	{/if}

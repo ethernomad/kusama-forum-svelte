@@ -31,6 +31,7 @@
 	<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-4">
 		<div class="mb-4 space-y-2">
 			<a class="btn variant-outline w-full justify-start" href="/my-profile">My profile</a>
+			<a class="btn variant-outline w-full justify-start" href="/item_id">Item ID</a>
 			<a class="btn variant-outline w-full justify-start" href="/status">Status</a>
 		</div>
 		<div class="space-y-3 text-sm">

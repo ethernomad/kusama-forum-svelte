@@ -14,7 +14,6 @@
 		PUBLISH_NOTICE_PREPARING
 	} from '$lib/services/publish-notices';
 
-	let contentLookupId = $state('');
 
 	const accountTypeOptions = [
 		{ value: 0, label: 'Anon' },
@@ -206,17 +205,6 @@
 			</div>
 		</header>
 
-		<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-4">
-			<div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-				<label class="block flex-1 space-y-2 text-sm">
-					<span class="font-medium">Open content by item ID</span>
-					<input class="w-full rounded-lg border-surface-200-800 bg-surface-100-900" bind:value={contentLookupId} placeholder="0x..." />
-				</label>
-				<a class="btn variant-outline" href={contentLookupId.trim() ? `/${contentLookupId.trim()}` : '/my-profile'} aria-disabled={!contentLookupId.trim()}>
-					Open content
-				</a>
-			</div>
-		</section>
 
 		{#if profileError}
 			<div class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">{profileError}</div>

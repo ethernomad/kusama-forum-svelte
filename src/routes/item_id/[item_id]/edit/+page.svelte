@@ -85,7 +85,7 @@
 				draft
 			});
 			notice = 'Revision published. Redirecting...';
-			await goto(`/${content.itemIdHex}`);
+			await goto(`/item_id/${content.itemIdHex}`);
 		} catch (value) {
 			error = value instanceof Error ? value.message : String(value);
 		} finally {
@@ -103,7 +103,7 @@
 			<h1 class="mt-1 text-2xl font-semibold">Edit content</h1>
 			<p class="mt-2 text-sm break-all text-surface-700-300">{itemId}</p>
 		</div>
-		<a class="variant-outline btn" href={`/${itemId}`}>View</a>
+		<a class="variant-outline btn" href={`/item_id/${itemId}`}>View</a>
 	</header>
 
 	{#if content}
@@ -171,7 +171,7 @@
 					>
 						{saving ? 'Publishing...' : 'Publish new revision'}
 					</button>
-					<a class="variant-outline btn" href={`/${itemId}`}>Cancel</a>
+					<a class="variant-outline btn" href={`/item_id/${itemId}`}>Cancel</a>
 				</div>
 
 				<p class="text-xs text-surface-700-300">

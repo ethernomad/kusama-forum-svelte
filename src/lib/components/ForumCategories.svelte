@@ -128,7 +128,7 @@
 			<article class="rounded-lg border border-surface-200-800 bg-surface-100-900 p-4">
 				<div class="flex items-start justify-between gap-3">
 					<div>
-						<a class="text-lg font-semibold hover:underline" href={`/${encodeURIComponent(category.itemIdHex)}`}>{category.title || 'Untitled category'}</a>
+						<a class="text-lg font-semibold hover:underline" href={`/item_id/${encodeURIComponent(category.itemIdHex)}`}>{category.title || 'Untitled category'}</a>
 						{#if category.bodyText}<p class="text-surface-700-300 mt-2 whitespace-pre-wrap text-sm">{category.bodyText}</p>{/if}
 						<code class="text-surface-700-300 mt-2 block break-all text-xs">{category.itemIdHex}</code>
 					</div>

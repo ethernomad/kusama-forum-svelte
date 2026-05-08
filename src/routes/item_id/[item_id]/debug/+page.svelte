@@ -91,7 +91,7 @@
 			<h1 class="mt-1 text-2xl font-semibold">Debug item</h1>
 			<p class="mt-2 text-sm break-all text-surface-700-300">{itemId}</p>
 		</div>
-		<a class="variant-outline btn" href={`/${itemId}`}>Back to item</a>
+		<a class="variant-outline btn" href={`/item_id/${itemId}`}>Back to item</a>
 	</header>
 
 	{#if debug}<ContentTabs {itemId} {canEdit} active="debug" />{/if}

@@ -13,7 +13,7 @@
 </script>
 
 <nav class="flex gap-2 rounded-xl border border-surface-200-800 bg-surface-50-950 p-2 text-sm">
-	<a class={tabClass('view')} href={`/${itemId}`}>View</a>
-	{#if canEdit}<a class={tabClass('edit')} href={`/${itemId}/edit`}>Edit</a>{/if}
-	<a class={tabClass('debug')} href={`/${itemId}/debug`}>Debug</a>
+	<a class={tabClass('view')} href={`/item_id/${itemId}`}>View</a>
+	{#if canEdit}<a class={tabClass('edit')} href={`/item_id/${itemId}/edit`}>Edit</a>{/if}
+	<a class={tabClass('debug')} href={`/item_id/${itemId}/debug`}>Debug</a>
 </nav>

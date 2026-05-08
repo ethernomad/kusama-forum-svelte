@@ -50,7 +50,7 @@
 				draft
 			});
 			notice = 'Forum created successfully. Redirecting...';
-			await goto(`/${saved.itemIdHex}`);
+			await goto(`/item_id/${saved.itemIdHex}`);
 		} catch (value) {
 			error = value instanceof Error ? value.message : String(value);
 		} finally {

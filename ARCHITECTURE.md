@@ -75,9 +75,10 @@ Important routes:
 - `src/routes/+page.svelte` — home page, currently the profile page
 - `src/routes/my-profile/+page.svelte` — profile editor/view
 - `src/routes/create-forum/+page.svelte` — create a top-level forum item
-- `src/routes/[item_id]/+page.svelte` — generic content viewer for any item
-- `src/routes/[item_id]/edit/+page.svelte` — revision editor for editable items
-- `src/routes/[item_id]/debug/+page.svelte` — low-level inspection of chain/indexed/IPFS state
+- `src/routes/item_id/+page.svelte` — item lookup form
+- `src/routes/item_id/[item_id]/+page.svelte` — generic content viewer for any item
+- `src/routes/item_id/[item_id]/edit/+page.svelte` — revision editor for editable items
+- `src/routes/item_id/[item_id]/debug/+page.svelte` — low-level inspection of chain/indexed/IPFS state
 - `src/routes/status/+page.svelte` — IPFS pinner queue status
 
 ### 2. Stateful client services
@@ -256,7 +257,7 @@ Important flags used by the UI:
 - chain owner matches the active account
 - content is revisionable
 
-That is why not every content type can be edited through `/[item_id]/edit`.
+That is why not every content type can be edited through `/item_id/[item_id]/edit`.
 
 ---
 
@@ -335,7 +336,7 @@ That is an important architectural choice:
 
 ## Reading data: how the viewer works
 
-The generic viewer route is `src/routes/[item_id]/+page.svelte`.
+The generic viewer route is `src/routes/item_id/[item_id]/+page.svelte`.
 
 ### Load sequence
 
@@ -691,7 +692,7 @@ The generic item viewer renders specialized sub-components depending on decoded 
 
 ### Debug view
 
-`/[item_id]/debug` is especially useful architecturally because it exposes the three-layer data model:
+`/item_id/[item_id]/debug` is especially useful architecturally because it exposes the three-layer data model:
 
 - chain owner/flags/latest revision
 - parents from indexed `PublishItem`
@@ -877,9 +878,9 @@ A quick map of the most important files:
 ### Routes
 
 - `src/routes/create-forum/+page.svelte`
-- `src/routes/[item_id]/+page.svelte`
-- `src/routes/[item_id]/edit/+page.svelte`
-- `src/routes/[item_id]/debug/+page.svelte`
+- `src/routes/item_id/[item_id]/+page.svelte`
+- `src/routes/item_id/[item_id]/edit/+page.svelte`
+- `src/routes/item_id/[item_id]/debug/+page.svelte`
 - `src/routes/status/+page.svelte`
 
 ---
