@@ -880,7 +880,7 @@ A quick map of the most important files:
 - `src/lib/services/content.ts` — generic content encoding/decoding/load/save
 - `src/lib/services/profile.ts` — profile-specific content flow
 - `src/lib/services/content-images.ts` — shared content/profile image helper logic
-- `src/routes/forum-admin/+page.svelte` — forum admin page backed by account-content storage; each forum row links directly to its forum page and keeps item IDs hidden from the list
+- `src/routes/forum-admin/+page.svelte` — forum admin page backed by account-content storage; each forum row links directly to its forum page, keeps item IDs hidden from the list, and starts with a square forum image thumbnail when available
 - `src/lib/services/reactions.ts` — reaction load/save logic
 - `src/lib/services/chain-signing.ts` — generic extension signing helper
 

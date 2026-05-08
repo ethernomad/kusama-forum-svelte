@@ -122,9 +122,20 @@
 			<section class="space-y-4">
 				{#each forums as forum (forum.itemIdHex)}
 					<a
-						class="card block p-5 transition hover:border-primary-500/50 hover:bg-surface-100/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+						class="card flex items-start gap-4 p-5 transition hover:border-primary-500/50 hover:bg-surface-100/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
 						href={resolve(`/item_id/${forum.itemIdHex}`)}
 					>
+						<div class="bg-surface-200-800 flex aspect-square size-20 shrink-0 items-center justify-center overflow-hidden rounded-xl">
+							{#if forum.imagePreviewDataUrl}
+								<img
+									src={forum.imagePreviewDataUrl}
+									alt={forum.title || 'Forum image'}
+									class="size-full object-cover"
+								/>
+							{:else}
+								<span class="text-surface-700-300 text-xs font-medium uppercase tracking-wide">No image</span>
+							{/if}
+						</div>
 						<div class="min-w-0">
 							<h2 class="text-lg font-semibold">
 								{forum.title || 'Untitled forum'}
