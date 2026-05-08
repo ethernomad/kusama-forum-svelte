@@ -96,14 +96,13 @@
 
 <div class="max-w-4xl space-y-6">
 	<header
-		class="card flex flex-wrap items-start justify-between gap-4 border-dashed p-6"
+		class="card border-dashed p-6"
 	>
 		<div>
 			<p class="text-sm font-medium text-surface-700-300">Content editor</p>
 			<h1 class="mt-1 text-2xl font-semibold">Edit content</h1>
 			<p class="mt-2 text-sm break-all text-surface-700-300">{itemId}</p>
 		</div>
-		<a class="variant-outline btn" href={`/item_id/${itemId}`}>View</a>
 	</header>
 
 	{#if content}
@@ -171,7 +170,6 @@
 					>
 						{saving ? 'Publishing...' : 'Publish new revision'}
 					</button>
-					<a class="variant-outline btn" href={`/item_id/${itemId}`}>Cancel</a>
 				</div>
 
 				<p class="text-xs text-surface-700-300">

@@ -13,6 +13,12 @@
 	} from '$lib/services/content';
 	import { connections } from '$lib/services/connections.svelte';
 
+	const FLAG_DEFS = [
+		{ bit: 1 << 0, label: 'Revisionable', description: 'New revisions are allowed.' },
+		{ bit: 1 << 1, label: 'Retractable', description: 'Item can be marked retracted.' },
+		{ bit: 1 << 2, label: 'Retracted', description: 'Set by retract_item.' }
+	] as const;
+
 	let loading = $state(false);
 	let revisionLoading = $state(false);
 	let error = $state('');
@@ -25,6 +31,10 @@
 
 	const itemId = $derived(page.params.item_id);
 	const canEdit = $derived(canEditContent(debug, injectedAccounts.activeAccount));
+
+	function isFlagEnabled(flags: number | null, bit: number): boolean {
+		return flags != null && (flags & bit) !== 0;
+	}
 
 	$effect(() => {
 		void itemId;
@@ -107,7 +117,34 @@
 			<div class="mt-4 grid gap-4 md:grid-cols-3">
 				<div><p class="text-xs text-surface-700-300 uppercase">Owner</p><code class="break-all">{debug.ownerHex ?? '—'}</code></div>
 				<div><p class="text-xs text-surface-700-300 uppercase">Latest revision</p><p>{debug.latestRevisionId ?? '—'}</p></div>
-				<div><p class="text-xs text-surface-700-300 uppercase">Flags</p><p>{debug.flags ?? '—'} {debug.flags != null ? `(0x${debug.flags.toString(16)})` : ''}</p></div>
+				<div>
+					<p class="text-xs text-surface-700-300 uppercase">Flags</p>
+					<p>{debug.flags ?? '—'} {debug.flags != null ? `(0x${debug.flags.toString(16)})` : ''}</p>
+					{#if debug.flags != null}
+						<div class="mt-3 flex flex-wrap gap-2">
+							{#each FLAG_DEFS as flag (flag.bit)}
+								<span
+									class={[
+										'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium',
+										isFlagEnabled(debug.flags, flag.bit)
+											? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200'
+											: 'border-surface-200-800 bg-surface-100-900 text-surface-700-300'
+									]}
+									title={flag.description}
+								>
+									<span
+										class={[
+											'h-2 w-2 rounded-full',
+											isFlagEnabled(debug.flags, flag.bit) ? 'bg-emerald-400' : 'bg-surface-500'
+										]}
+									></span>
+									<span>{flag.label}</span>
+									<span class="opacity-80">{isFlagEnabled(debug.flags, flag.bit) ? 'enabled' : 'disabled'}</span>
+								</span>
+							{/each}
+						</div>
+					{/if}
+				</div>
 			</div>
 			<div class="mt-4">
 				<p class="text-xs text-surface-700-300 uppercase">Parents from PublishItem</p>

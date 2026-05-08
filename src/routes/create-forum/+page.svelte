@@ -98,7 +98,6 @@
 							Create forum
 						{/if}
 					</button>
-					<a class="btn variant-outline" href={resolve('/my-profile')}>Cancel</a>
 				</div>
 			</div>
 

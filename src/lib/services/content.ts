@@ -40,7 +40,7 @@ const BODY_TEXT_MIXIN_ID = 0x2d382044;
 const IMAGE_MIXIN_ID = 0x045eee8c;
 const PROFILE_MIXIN_ID = 0xbeef2144;
 const DEFAULT_LANGUAGE_TAG = 'en';
-const FORUM_ITEM_FLAGS = 0x00;
+const FORUM_ITEM_FLAGS = REVISIONABLE_ITEM_FLAGS | 0x02;
 const CATEGORY_ITEM_FLAGS = 0x02;
 const FORUM_POST_ITEM_FLAGS = REVISIONABLE_ITEM_FLAGS;
 const COMMENT_ITEM_FLAGS = REVISIONABLE_ITEM_FLAGS;
@@ -801,7 +801,7 @@ function matchesItemIdList(left: string[], right: string[]): boolean {
 	return equalJsonValue(left, right);
 }
 
-async function publishItemAndFinalize(params: {
+async function publishDerivedItemAndFinalize(params: {
 	api: ApiPromise;
 	account: InjectedAccount;
 	nonce: Uint8Array;
@@ -809,12 +809,23 @@ async function publishItemAndFinalize(params: {
 	links: Uint8Array[];
 	flags: number;
 	revisionIpfsHashBytes: Uint8Array;
-}): Promise<void> {
-	const { api, account, nonce, parents, links, flags, revisionIpfsHashBytes } = params;
+	buildAdditionalCalls?: (itemIdBytes: Uint8Array) => unknown[];
+}): Promise<{ itemIdBytes: Uint8Array }> {
+	const { api, account, nonce, parents, links, flags, revisionIpfsHashBytes, buildAdditionalCalls } =
+		params;
+	const itemIdBytes = await deriveItemId(account.address, nonce);
 	const publishItem = (
 		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
 	).content.publishItem(nonce, parents, flags, links, [], revisionIpfsHashBytes);
-	await signAndFinalize(publishItem as SignableExtrinsic, account);
+	const additionalCalls = buildAdditionalCalls?.(itemIdBytes) ?? [];
+	const extrinsic =
+		additionalCalls.length === 0
+			? publishItem
+			: (
+					api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
+				).utility.batchAll([publishItem, ...additionalCalls]);
+	await signAndFinalize(extrinsic as SignableExtrinsic, account);
+	return { itemIdBytes };
 }
 
 async function saveEncodedContentItem(params: {
@@ -825,19 +836,20 @@ async function saveEncodedContentItem(params: {
 	parents: string[];
 	links: string[];
 	flags: number;
+	buildAdditionalCalls?: (itemIdBytes: Uint8Array) => unknown[];
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
-	const { api, heliaNode, account, itemPayload, parents, links, flags } = params;
+	const { api, heliaNode, account, itemPayload, parents, links, flags, buildAdditionalCalls } = params;
 	const revisionIpfsHashHex = await uploadIpfsDigest(heliaNode, itemPayload);
 	const nonce = crypto.getRandomValues(new Uint8Array(32));
-	const itemIdBytes = await deriveItemId(account.address, nonce);
-	await publishItemAndFinalize({
+	const { itemIdBytes } = await publishDerivedItemAndFinalize({
 		api,
 		account,
 		nonce,
 		parents: parents.map(hexToBytes),
 		links: links.map(hexToBytes),
 		flags,
-		revisionIpfsHashBytes: hexToBytes(revisionIpfsHashHex)
+		revisionIpfsHashBytes: hexToBytes(revisionIpfsHashHex),
+		buildAdditionalCalls
 	});
 	return { itemIdHex: toHex(itemIdBytes), revisionIpfsHashHex };
 }
@@ -872,15 +884,19 @@ export async function saveForum(params: {
 		prepare: prepareForumSave
 	});
 	const nonce = crypto.getRandomValues(new Uint8Array(32));
-	const itemIdBytes = await deriveItemId(account.address, nonce);
-	await publishItemAndFinalize({
+	const { itemIdBytes } = await publishDerivedItemAndFinalize({
 		api,
 		account,
 		nonce,
 		parents: [],
 		links: [],
 		flags: FORUM_ITEM_FLAGS,
-		revisionIpfsHashBytes: resolved.revisionIpfsHashBytes
+		revisionIpfsHashBytes: resolved.revisionIpfsHashBytes,
+		buildAdditionalCalls: (itemIdBytes) => [
+			(api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>).accountContent.addItem(
+				itemIdBytes
+			)
+		]
 	});
 	return {
 		itemIdHex: toHex(itemIdBytes),

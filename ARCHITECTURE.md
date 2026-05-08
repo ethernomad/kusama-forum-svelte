@@ -74,6 +74,7 @@ Important routes:
 - `src/routes/+layout.svelte` — bootstraps global connections/watchers and renders the sidebar
 - `src/routes/+page.svelte` — home page, currently the profile page
 - `src/routes/my-profile/+page.svelte` — profile editor/view
+- `src/routes/forum-admin/+page.svelte` — list the active user's forums from `pallet-account-content` and link to forum creation
 - `src/routes/create-forum/+page.svelte` — create a top-level forum item
 - `src/routes/item_id/+page.svelte` — item lookup form
 - `src/routes/item_id/[item_id]/+page.svelte` — generic content viewer for any item
@@ -461,15 +462,19 @@ Flow:
 
 The profile flow is special because the account profile pallet maps an account to a profile item ID.
 
+The forum flow now uses a similar batched-create pattern, except its follow-up call targets `pallet-account-content` so the owner's account content list stays in sync with newly created forums.
+
 ### 2. Create forum
 
 `saveForum()`:
 
 - creates a top-level content item
-- flags: `FORUM_ITEM_FLAGS = 0x00`
+- flags: `FORUM_ITEM_FLAGS = 0x03` (revisionable + retractable)
 - no parents
 - no links
-- submits `content.publishItem(...)`
+- derives the future `item_id` locally from account + nonce before submission
+- batches `content.publishItem(...)` with `accountContent.addItem(itemId)` using `utility.batchAll(...)`
+- atomically records the newly created forum in the owner's `pallet-account-content` list
 
 ### 3. Create category
 
@@ -868,6 +873,7 @@ A quick map of the most important files:
 
 - `src/lib/services/content.ts` — generic content encoding/decoding/load/save
 - `src/lib/services/profile.ts` — profile-specific content flow
+- `src/routes/forum-admin/+page.svelte` — forum admin page backed by account-content storage
 - `src/lib/services/reactions.ts` — reaction load/save logic
 - `src/lib/services/chain-signing.ts` — generic extension signing helper
 

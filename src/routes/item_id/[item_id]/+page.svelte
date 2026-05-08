@@ -10,9 +10,7 @@
 	import {
 		canEditContent,
 		fetchContentRevisions,
-		ipfsDigestHexToCid,
 		loadContentByItemId,
-		shortHex,
 		type ContentRevisionMeta,
 		type LoadedContent
 	} from '$lib/services/content';
@@ -152,85 +150,46 @@
 			{error}
 		</div>
 	{:else if content}
-		<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
-			<section class="card p-6">
-				<div class="mb-4">
-					<p class="text-xs text-surface-700-300 uppercase">Type</p>
-					<p class="mt-1 text-sm font-medium">{contentTypeLabel(content)}</p>
-					<p class="mt-1 text-xs text-surface-700-300">
-						content_type_id: {content.contentTypeId ?? '—'}
-					</p>
-				</div>
+		<section class="card p-6">
+			<div class="mb-4">
+				<p class="text-xs text-surface-700-300 uppercase">Type</p>
+				<p class="mt-1 text-sm font-medium">{contentTypeLabel(content)}</p>
+				<p class="mt-1 text-xs text-surface-700-300">
+					content_type_id: {content.contentTypeId ?? '—'}
+				</p>
+			</div>
 
-				<h2 class="text-2xl font-semibold">{content.title || 'Untitled content'}</h2>
+			<h2 class="text-2xl font-semibold">{content.title || 'Untitled content'}</h2>
 
-				{#if content.profileLocation}
-					<p class="mt-2 text-sm text-surface-700-300">Location: {content.profileLocation}</p>
-				{/if}
+			{#if content.profileLocation}
+				<p class="mt-2 text-sm text-surface-700-300">Location: {content.profileLocation}</p>
+			{/if}
 
-				{#if content.imagePreviewDataUrl}
-					<img
-						src={content.imagePreviewDataUrl}
-						alt={content.title || 'Content image'}
-						class="mt-6 max-h-80 rounded-xl object-cover"
-					/>
-				{/if}
+			{#if content.imagePreviewDataUrl}
+				<img
+					src={content.imagePreviewDataUrl}
+					alt={content.title || 'Content image'}
+					class="mt-6 max-h-80 rounded-xl object-cover"
+				/>
+			{/if}
 
-				{#if content.bodyText}
-					<div class="prose mt-6 max-w-none whitespace-pre-wrap prose-invert">
-						{content.bodyText}
-					</div>
-				{/if}
+			{#if content.bodyText}
+				<div class="prose mt-6 max-w-none whitespace-pre-wrap prose-invert">
+					{content.bodyText}
+				</div>
+			{/if}
 
-				{#if content.contentType === 'forum'}
-					<ForumCategories forum={content} />
-				{:else if content.contentType === 'category'}
-					<CategoryForumPosts category={content} />
-				{:else if content.contentType === 'forumPost' && content.latestLinks.length}
-					<PostCategories post={content} />
-				{/if}
+			{#if content.contentType === 'forum'}
+				<ForumCategories forum={content} />
+			{:else if content.contentType === 'category'}
+				<CategoryForumPosts category={content} />
+			{:else if content.contentType === 'forumPost' && content.latestLinks.length}
+				<PostCategories post={content} />
+			{/if}
 
-				{#if content.contentType === 'forumPost' || content.contentType === 'comment'}
-					<Comments item={content} refreshNonce={commentsRefreshNonce} />
-				{/if}
-			</section>
-
-			<aside
-				class="card space-y-4 p-4 text-sm"
-			>
-				<div>
-					<p class="text-xs text-surface-700-300 uppercase">Item ID</p>
-					<code class="mt-1 block text-xs break-all">{content.itemIdHex}</code>
-				</div>
-				<div>
-					<p class="text-xs text-surface-700-300 uppercase">Selected revision</p>
-					<p class="mt-1">{content.revisionId ?? '—'}{content.revisionId === content.latestRevisionId ? ' (latest)' : ''}</p>
-					<code class="mt-1 block text-xs break-all"
-						>{ipfsDigestHexToCid(content.revisionIpfsHashHex)}</code
-					>
-				</div>
-				<div>
-					<p class="text-xs text-surface-700-300 uppercase">Content type</p>
-					<p class="mt-1">{contentTypeLabel(content)}</p>
-					<p class="mt-1 text-xs text-surface-700-300">ID: {content.contentTypeId ?? '—'}</p>
-				</div>
-				<div>
-					<p class="text-xs text-surface-700-300 uppercase">Language</p>
-					<p class="mt-1">{content.languageTag ?? '—'}</p>
-				</div>
-				<div>
-					<p class="text-xs text-surface-700-300 uppercase">Profile account type</p>
-					<p class="mt-1">{content.profileAccountType ?? '—'}</p>
-				</div>
-				<div>
-					<p class="text-xs text-surface-700-300 uppercase">Mixins</p>
-					<ul class="mt-1 space-y-1 text-xs">
-						{#each content.rawMixinIds as mixinId (mixinId)}
-							<li><code>{shortHex(`0x${mixinId.toString(16).padStart(8, '0')}`)}</code></li>
-						{/each}
-					</ul>
-				</div>
-			</aside>
-		</div>
+			{#if content.contentType === 'forumPost' || content.contentType === 'comment'}
+				<Comments item={content} refreshNonce={commentsRefreshNonce} />
+			{/if}
+		</section>
 	{/if}
 </div>

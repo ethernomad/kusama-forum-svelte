@@ -8,7 +8,7 @@
 	const goBack = () => history.back();
 	const goForward = () => history.forward();
 
-	type MenuHref = '/my-profile' | '/item_id' | '/create-forum';
+	type MenuHref = '/my-profile' | '/item_id' | '/forum-admin';
 
 	type MenuItem = {
 		href?: MenuHref;
@@ -29,9 +29,9 @@
 			description: 'Inspect any item by its on-chain ID'
 		},
 		{
-			href: '/create-forum',
-			label: 'Create forum',
-			description: 'Publish a new top-level forum'
+			href: '/forum-admin',
+			label: 'Forum admin',
+			description: 'View your forums and create a new one'
 		},
 		{
 			label: 'Refresh page',
