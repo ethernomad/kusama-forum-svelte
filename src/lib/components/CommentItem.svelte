@@ -1,12 +1,20 @@
 <script lang="ts">
 	import CommentForm from '$lib/components/CommentForm.svelte';
 	import CommentItem from '$lib/components/CommentItem.svelte';
-	import { getSubscriptionDecodedEvent, itemIdIndexerKey, subscribeIndexerEvents } from '$lib/services/indexer.svelte';
+	import Reactions from '$lib/components/Reactions.svelte';
+	import {
+		getSubscriptionDecodedEvent,
+		itemIdIndexerKey,
+		subscribeIndexerEvents
+	} from '$lib/services/indexer.svelte';
 	import { shortHex, type ForumComment } from '$lib/services/content';
 
-	let { comment, onChanged }: { comment: ForumComment; onChanged: () => void | Promise<void> } = $props();
+	let { comment, onChanged }: { comment: ForumComment; onChanged: () => void | Promise<void> } =
+		$props();
 
-	function handleIndexerMessage(message: Parameters<Parameters<typeof subscribeIndexerEvents>[1]>[0]) {
+	function handleIndexerMessage(
+		message: Parameters<Parameters<typeof subscribeIndexerEvents>[1]>[0]
+	) {
 		const decoded = getSubscriptionDecodedEvent(message);
 		if (decoded?.event.palletName !== 'Content') return;
 		const eventName = decoded.event.eventName;
@@ -25,7 +33,11 @@
 		<span>Comment {shortHex(comment.itemIdHex)}</span>
 		<span>Block {comment.publishBlockNumber || '—'}</span>
 	</div>
-	<div class="mt-3 whitespace-pre-wrap text-sm">{comment.bodyText}</div>
+	<div class="mt-3 text-sm whitespace-pre-wrap">{comment.bodyText}</div>
+	<Reactions
+		itemIdHex={comment.itemIdHex}
+		revisionId={comment.latestRevisionId ?? comment.revisionId}
+	/>
 	<CommentForm parentItemIdHex={comment.itemIdHex} onPublished={onChanged} label="Reply" />
 	{#if comment.replies.length}
 		<div class="mt-4 space-y-3 border-l border-surface-300-700 pl-4">

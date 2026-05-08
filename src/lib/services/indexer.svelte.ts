@@ -82,7 +82,9 @@ let statusSubscriptionId: string | null = null;
 const statusListeners = new Map<number, (spans: IndexSpan[]) => void>();
 const eventListeners = new Map<number, EventListener>();
 let nextListenerId = 1;
-let connectionStateHandler: ((state: { status: string; subscriptionStatus: string }) => void) | null = null;
+let connectionStateHandler:
+	| ((state: { status: string; subscriptionStatus: string }) => void)
+	| null = null;
 
 function setConnectionState(status: string, subscriptionStatus: string) {
 	connectionStateHandler?.({ status, subscriptionStatus });
@@ -107,7 +109,10 @@ function jsonRpcRequest<T>(method: string, params: Record<string, unknown>): Pro
 		}
 
 		ensureConnected();
-		const timeout = setTimeout(() => reject(new Error('Timed out waiting for indexer connection.')), 5_000);
+		const timeout = setTimeout(
+			() => reject(new Error('Timed out waiting for indexer connection.')),
+			5_000
+		);
 		const poll = setInterval(() => {
 			if (!shouldRun) {
 				clearInterval(poll);
@@ -124,7 +129,14 @@ function jsonRpcRequest<T>(method: string, params: Record<string, unknown>): Pro
 }
 
 function subscribeStatusIfNeeded() {
-	if (!socket || !socketOpen || statusListeners.size === 0 || statusSubscriptionId || statusSubscriptionRequestId != null) return;
+	if (
+		!socket ||
+		!socketOpen ||
+		statusListeners.size === 0 ||
+		statusSubscriptionId ||
+		statusSubscriptionRequestId != null
+	)
+		return;
 	statusSubscriptionRequestId = nextRequestId++;
 	socket.send(
 		JSON.stringify({
@@ -179,7 +191,8 @@ function ensureConnected() {
 			if (pendingRequests.has(message.id)) {
 				const pending = pendingRequests.get(message.id)!;
 				pendingRequests.delete(message.id);
-				if (message.error) pending.reject(new Error(message.error.message ?? 'Indexer request failed.'));
+				if (message.error)
+					pending.reject(new Error(message.error.message ?? 'Indexer request failed.'));
 				else pending.resolve(message.result);
 				return;
 			}
@@ -191,7 +204,12 @@ function ensureConnected() {
 					setConnectionState('Connected', 'Subscribed to latest blocks');
 					void indexStatus()
 						.then((spans) => broadcastStatus(spans))
-						.catch((error) => setConnectionState('Connected', `Request failed: ${error instanceof Error ? error.message : String(error)}`));
+						.catch((error) =>
+							setConnectionState(
+								'Connected',
+								`Request failed: ${error instanceof Error ? error.message : String(error)}`
+							)
+						);
 				}
 				return;
 			}
@@ -238,7 +256,8 @@ function ensureConnected() {
 			listener.subscriptionId = null;
 			listener.pendingRequestId = null;
 		}
-		for (const pending of pendingRequests.values()) pending.reject(new Error('Indexer connection closed.'));
+		for (const pending of pendingRequests.values())
+			pending.reject(new Error('Indexer connection closed.'));
 		pendingRequests = new Map();
 		if (!shouldRun) return;
 		setConnectionState('Disconnected', 'Subscription closed');
@@ -249,7 +268,10 @@ function ensureConnected() {
 	});
 
 	socket.addEventListener('error', () => {
-		setConnectionState(`Connection failed: could not connect to ${INDEXER_ENDPOINT}`, 'Unavailable');
+		setConnectionState(
+			`Connection failed: could not connect to ${INDEXER_ENDPOINT}`,
+			'Unavailable'
+		);
 	});
 }
 
@@ -257,7 +279,9 @@ function broadcastStatus(spans: IndexSpan[]) {
 	for (const listener of statusListeners.values()) listener(spans);
 }
 
-export function configureIndexerConnectionState(handler: ((state: { status: string; subscriptionStatus: string }) => void) | null) {
+export function configureIndexerConnectionState(
+	handler: ((state: { status: string; subscriptionStatus: string }) => void) | null
+) {
 	connectionStateHandler = handler;
 }
 
@@ -328,13 +352,18 @@ export function itemIdIndexerKey(itemIdHex: string): CustomBytes32Key {
 	};
 }
 
-export function getSubscriptionDecodedEvent(message: IndexerSubscriptionMessage): DecodedIndexerEvent | null {
+export function getSubscriptionDecodedEvent(
+	message: IndexerSubscriptionMessage
+): DecodedIndexerEvent | null {
 	const result = message.params?.result;
 	if (result?.type !== 'event') return null;
 	return result.event ?? null;
 }
 
-export function subscribeIndexerEvents(key: IndexerEventKey, callback: (message: IndexerSubscriptionMessage) => void) {
+export function subscribeIndexerEvents(
+	key: IndexerEventKey,
+	callback: (message: IndexerSubscriptionMessage) => void
+) {
 	ensureStarted();
 	const id = nextListenerId++;
 	eventListeners.set(id, { key, callback, subscriptionId: null, pendingRequestId: null });
@@ -355,4 +384,4 @@ export function subscribeIndexerEvents(key: IndexerEventKey, callback: (message:
 	};
 }
 
-export type { CustomBytes32Key, IndexSpan, IndexerSubscriptionMessage };
+export type { CustomBytes32Key, CustomCompositeKey, IndexSpan, IndexerSubscriptionMessage };
