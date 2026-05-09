@@ -11,10 +11,10 @@ type ProtoReader = InstanceType<typeof Reader>;
 type ProtoWriter = InstanceType<typeof Writer>;
 
 import type { InjectedAccount } from './accounts.svelte';
-import { signAndFinalize, signAndSubmit, type SignableExtrinsic } from './chain-signing';
+import { signAndFinalize, type SignableExtrinsic } from './chain-signing';
 import { buildImagePayload, previewDataUrlForImageMixin } from './content-images';
 import { getIndexedEvents } from './indexer.svelte';
-import { pinPublishedCids, publishBytesToIpfs } from './ipfs-publish';
+import { publishBytesToIpfs } from './ipfs-publish';
 import { resolvePreparedValue } from './prepared-publish';
 const PROFILE_ITEM_FLAGS = 0x01;
 const PROFILE_CONTENT_TYPE_ID = 4;
@@ -59,7 +59,6 @@ export type PreparedProfileSave = {
 	itemPayload: Bytes;
 	revisionIpfsHashHex: string;
 	revisionIpfsHashBytes: Bytes;
-	pinnerCids: string[];
 };
 
 type MixinPayload = {
@@ -322,12 +321,9 @@ async function addIpfs(heliaNode: Helia, bytes: Uint8Array): Promise<CID> {
 	return cid;
 }
 
-async function uploadIpfsDigest(heliaNode: Helia, bytes: Uint8Array): Promise<{ digestHex: string; cidText: string }> {
+async function uploadIpfsDigest(heliaNode: Helia, bytes: Uint8Array): Promise<string> {
 	const cid = await addIpfs(heliaNode, bytes);
-	return {
-		digestHex: cidToDigestHex(cid),
-		cidText: cid.toString()
-	};
+	return cidToDigestHex(cid);
 }
 
 async function fetchIpfsBytesByCid(heliaNode: Helia, cid: CID): Promise<Bytes> {
@@ -341,16 +337,6 @@ async function fetchIpfsBytesByCid(heliaNode: Helia, cid: CID): Promise<Bytes> {
 
 async function fetchIpfsDigestBytes(heliaNode: Helia, ipfsHashHex: string): Promise<Bytes> {
 	return fetchIpfsBytesByCid(heliaNode, digestHexToCid(ipfsHashHex));
-}
-
-function createPublishRevisionExtrinsic(
-	api: ApiPromise,
-	itemIdBytes: Uint8Array,
-	revisionIpfsHashBytes: Uint8Array
-): SignableExtrinsic {
-	return (
-		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
-	).content.publishRevision(itemIdBytes, [], [], revisionIpfsHashBytes) as SignableExtrinsic;
 }
 
 function encodeProfileItem(draft: ProfileDraft, imagePayload: Bytes | null): Bytes {
@@ -542,7 +528,7 @@ export async function prepareProfileSave(params: {
 	const builtImage = selectedImageFile ? await buildImagePayload(heliaNode, selectedImageFile) : null;
 	const imagePayload = builtImage?.payload ?? existingImagePayload;
 	const itemPayload = encodeProfileItem(draft, imagePayload);
-	const { digestHex: revisionIpfsHashHex, cidText } = await uploadIpfsDigest(heliaNode, itemPayload);
+	const revisionIpfsHashHex = await uploadIpfsDigest(heliaNode, itemPayload);
 	return {
 		draft: { ...draft },
 		existingItemIdHex,
@@ -552,8 +538,7 @@ export async function prepareProfileSave(params: {
 		imagePreviewDataUrl: builtImage?.previewDataUrl ?? null,
 		itemPayload,
 		revisionIpfsHashHex,
-		revisionIpfsHashBytes: hexToBytes(revisionIpfsHashHex),
-		pinnerCids: [...(builtImage?.cids ?? []), cidText]
+		revisionIpfsHashBytes: hexToBytes(revisionIpfsHashHex)
 	};
 }
 
@@ -583,10 +568,13 @@ export async function saveProfile(params: {
 
 	if (existingItemIdHex) {
 		const itemIdBytes = hexToBytes(existingItemIdHex);
-		const extrinsic = createPublishRevisionExtrinsic(api, itemIdBytes, revisionIpfsHashBytes);
-		const { waitForFinalization } = await signAndSubmit(extrinsic, account);
-		await pinPublishedCids(heliaNode, resolved.pinnerCids);
-		await waitForFinalization;
+		const extrinsic = (api.tx as Record<string, Record<string, (...args: unknown[]) => { signAndSend: Function }>>).content.publishRevision(
+			itemIdBytes,
+			[],
+			[],
+			revisionIpfsHashBytes
+		);
+		await signAndFinalize(extrinsic as SignableExtrinsic, account);
 		return {
 			exists: true,
 			itemIdHex: existingItemIdHex,
@@ -614,9 +602,7 @@ export async function saveProfile(params: {
 		publishItem,
 		setProfile
 	]);
-	const { waitForFinalization } = await signAndSubmit(batch as SignableExtrinsic, account);
-	await pinPublishedCids(heliaNode, resolved.pinnerCids);
-	await waitForFinalization;
+	await signAndFinalize(batch as SignableExtrinsic, account);
 
 	return {
 		exists: true,

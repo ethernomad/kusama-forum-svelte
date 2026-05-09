@@ -7,10 +7,10 @@ import protobuf from 'protobufjs/minimal';
 import { cryptoWaitReady, decodeAddress } from '@polkadot/util-crypto';
 
 import type { InjectedAccount } from './accounts.svelte';
-import { signAndFinalize, signAndSubmit, type SignableExtrinsic } from './chain-signing';
+import { signAndFinalize, type SignableExtrinsic } from './chain-signing';
 import { buildImagePayload, decodeImageMixin, previewDataUrlForImageMixin } from './content-images';
 import { getIndexedEvents } from './indexer.svelte';
-import { pinPublishedCids, publishBytesToIpfs } from './ipfs-publish';
+import { publishBytesToIpfs } from './ipfs-publish';
 import { resolvePreparedValue } from './prepared-publish';
 
 const { Reader, Writer } = protobuf;
@@ -135,7 +135,6 @@ export type PreparedForumSave = {
 	itemPayload: Bytes;
 	revisionIpfsHashHex: string;
 	revisionIpfsHashBytes: Bytes;
-	pinnerCids: string[];
 };
 
 export type PreparedContentRevision = {
@@ -149,7 +148,6 @@ export type PreparedContentRevision = {
 	imagePreviewDataUrl: string | null;
 	revisionIpfsHashHex: string;
 	revisionIpfsHashBytes: Bytes;
-	pinnerCids: string[];
 };
 
 export type ForumCategory = LoadedContent & {
@@ -409,12 +407,9 @@ async function fetchIpfsDigestBytes(heliaNode: Helia, ipfsHashHex: string): Prom
 	return concatBytes(...chunks);
 }
 
-async function uploadIpfsDigest(heliaNode: Helia, bytes: Uint8Array): Promise<{ digestHex: string; cidText: string }> {
+async function uploadIpfsDigest(heliaNode: Helia, bytes: Uint8Array): Promise<string> {
 	const { cid } = await publishBytesToIpfs(heliaNode, bytes);
-	return {
-		digestHex: toHex(cid.multihash.digest),
-		cidText: cid.toString()
-	};
+	return toHex(cid.multihash.digest);
 }
 
 
@@ -796,38 +791,6 @@ function matchesBytes(left: Bytes | null, right: Bytes | null): boolean {
 	return true;
 }
 
-function createPublishRevisionExtrinsic(
-	api: ApiPromise,
-	itemIdBytes: Uint8Array,
-	links: Uint8Array[],
-	revisionIpfsHashBytes: Uint8Array
-): SignableExtrinsic {
-	const publishRevision = (
-		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
-	).content.publishRevision;
-	const attempts: unknown[][] = [
-		[itemIdBytes, revisionIpfsHashBytes],
-		[itemIdBytes, links, revisionIpfsHashBytes],
-		[itemIdBytes, links, [], revisionIpfsHashBytes]
-	];
-	let lastError: unknown = null;
-
-	for (const args of attempts) {
-		try {
-			return publishRevision(...args) as SignableExtrinsic;
-		} catch (error) {
-			lastError = error;
-			const message = error instanceof Error ? error.message : String(error);
-			if (/too many function arguments|expected \d+ arguments?/i.test(message)) {
-				continue;
-			}
-			throw error;
-		}
-	}
-
-	throw lastError instanceof Error ? lastError : new Error(String(lastError ?? 'Failed to build publishRevision extrinsic.'));
-}
-
 async function publishDerivedItemAndFinalize(params: {
 	api: ApiPromise;
 	account: InjectedAccount;
@@ -837,7 +800,7 @@ async function publishDerivedItemAndFinalize(params: {
 	flags: number;
 	revisionIpfsHashBytes: Uint8Array;
 	buildAdditionalCalls?: (itemIdBytes: Uint8Array) => unknown[];
-}): Promise<{ itemIdBytes: Uint8Array; extrinsic: SignableExtrinsic }> {
+}): Promise<{ itemIdBytes: Uint8Array }> {
 	const { api, account, nonce, parents, links, flags, revisionIpfsHashBytes, buildAdditionalCalls } =
 		params;
 	const itemIdBytes = await deriveItemId(account.address, nonce);
@@ -851,7 +814,8 @@ async function publishDerivedItemAndFinalize(params: {
 			: (
 					api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
 				).utility.batchAll([publishItem, ...additionalCalls]);
-	return { itemIdBytes, extrinsic: extrinsic as SignableExtrinsic };
+	await signAndFinalize(extrinsic as SignableExtrinsic, account);
+	return { itemIdBytes };
 }
 
 async function saveEncodedContentItem(params: {
@@ -865,9 +829,9 @@ async function saveEncodedContentItem(params: {
 	buildAdditionalCalls?: (itemIdBytes: Uint8Array) => unknown[];
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
 	const { api, heliaNode, account, itemPayload, parents, links, flags, buildAdditionalCalls } = params;
-	const { digestHex: revisionIpfsHashHex, cidText } = await uploadIpfsDigest(heliaNode, itemPayload);
+	const revisionIpfsHashHex = await uploadIpfsDigest(heliaNode, itemPayload);
 	const nonce = crypto.getRandomValues(new Uint8Array(32));
-	const { itemIdBytes, extrinsic } = await publishDerivedItemAndFinalize({
+	const { itemIdBytes } = await publishDerivedItemAndFinalize({
 		api,
 		account,
 		nonce,
@@ -877,9 +841,6 @@ async function saveEncodedContentItem(params: {
 		revisionIpfsHashBytes: hexToBytes(revisionIpfsHashHex),
 		buildAdditionalCalls
 	});
-	const { waitForFinalization } = await signAndSubmit(extrinsic, account);
-	await pinPublishedCids(heliaNode, [cidText]);
-	await waitForFinalization;
 	return { itemIdHex: toHex(itemIdBytes), revisionIpfsHashHex };
 }
 
@@ -892,7 +853,7 @@ export async function prepareForumSave(params: {
 	const builtImage = selectedImageFile ? await buildImagePayload(heliaNode, selectedImageFile) : null;
 	const imagePayload = builtImage?.payload ?? null;
 	const itemPayload = encodeForumItem(draft, imagePayload);
-	const { digestHex: revisionIpfsHashHex, cidText } = await uploadIpfsDigest(heliaNode, itemPayload);
+	const revisionIpfsHashHex = await uploadIpfsDigest(heliaNode, itemPayload);
 	return {
 		draft: { ...draft },
 		selectedImageFileName: selectedImageFile?.name ?? null,
@@ -900,8 +861,7 @@ export async function prepareForumSave(params: {
 		imagePreviewDataUrl: builtImage?.previewDataUrl ?? null,
 		itemPayload,
 		revisionIpfsHashHex,
-		revisionIpfsHashBytes: hexToBytes(revisionIpfsHashHex),
-		pinnerCids: [...(builtImage?.cids ?? []), cidText]
+		revisionIpfsHashBytes: hexToBytes(revisionIpfsHashHex)
 	};
 }
 
@@ -923,7 +883,7 @@ export async function saveForum(params: {
 		prepare: prepareForumSave
 	});
 	const nonce = crypto.getRandomValues(new Uint8Array(32));
-	const { itemIdBytes, extrinsic } = await publishDerivedItemAndFinalize({
+	const { itemIdBytes } = await publishDerivedItemAndFinalize({
 		api,
 		account,
 		nonce,
@@ -937,9 +897,6 @@ export async function saveForum(params: {
 			)
 		]
 	});
-	const { waitForFinalization } = await signAndSubmit(extrinsic, account);
-	await pinPublishedCids(heliaNode, resolved.pinnerCids);
-	await waitForFinalization;
 	return {
 		itemIdHex: toHex(itemIdBytes),
 		revisionIpfsHashHex: resolved.revisionIpfsHashHex
@@ -1016,7 +973,7 @@ export async function prepareContentRevision(params: {
 	const languageTag = content.languageTag ?? DEFAULT_LANGUAGE_TAG;
 	const builtImage = selectedImageFile ? await buildImagePayload(heliaNode, selectedImageFile) : null;
 	const imagePayload = removeImage ? null : (builtImage?.payload ?? content.existingImagePayload);
-	const { digestHex: revisionIpfsHashHex, cidText } = await uploadIpfsDigest(
+	const revisionIpfsHashHex = await uploadIpfsDigest(
 		heliaNode,
 		encodeContentItem({
 			contentTypeId: content.contentTypeId,
@@ -1036,8 +993,7 @@ export async function prepareContentRevision(params: {
 		imagePayload,
 		imagePreviewDataUrl: removeImage ? null : (builtImage?.previewDataUrl ?? content.imagePreviewDataUrl),
 		revisionIpfsHashHex,
-		revisionIpfsHashBytes: hexToBytes(revisionIpfsHashHex),
-		pinnerCids: [...(builtImage?.cids ?? []), cidText]
+		revisionIpfsHashBytes: hexToBytes(revisionIpfsHashHex)
 	};
 }
 
@@ -1069,36 +1025,15 @@ export async function publishContentRevision(params: {
 			matchesContentRevisionDraft(candidate.draft, input.draft),
 		prepare: prepareContentRevision
 	});
-	let publishRevision: SignableExtrinsic;
-	try {
-		publishRevision = createPublishRevisionExtrinsic(
-			api,
-			hexToBytes(content.itemIdHex),
-			content.latestLinks.map(hexToBytes),
-			resolved.revisionIpfsHashBytes
-		);
-	} catch (error) {
-		throw new Error(`Failed to build content.publishRevision extrinsic: ${error instanceof Error ? error.message : String(error)}`);
-	}
-
-	let waitForFinalization: Promise<void>;
-	try {
-		({ waitForFinalization } = await signAndSubmit(publishRevision, account));
-	} catch (error) {
-		throw new Error(`Failed to sign or submit content.publishRevision: ${error instanceof Error ? error.message : String(error)}`);
-	}
-
-	try {
-		await pinPublishedCids(heliaNode, resolved.pinnerCids);
-	} catch (error) {
-		throw new Error(`Transaction submitted, but failed to send published CIDs to the local pinner: ${error instanceof Error ? error.message : String(error)}`);
-	}
-
-	try {
-		await waitForFinalization;
-	} catch (error) {
-		throw new Error(`content.publishRevision was submitted, but failed before finalization: ${error instanceof Error ? error.message : String(error)}`);
-	}
+	const publishRevision = (
+		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
+	).content.publishRevision(
+		hexToBytes(content.itemIdHex),
+		content.latestLinks.map(hexToBytes),
+		[],
+		resolved.revisionIpfsHashBytes
+	);
+	await signAndFinalize(publishRevision as SignableExtrinsic, account);
 	return { itemIdHex: content.itemIdHex, revisionIpfsHashHex: resolved.revisionIpfsHashHex };
 }
 

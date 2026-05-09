@@ -216,7 +216,7 @@
 						</button>
 						<button class="btn variant-outline" type="button" onclick={() => {
 							selectedImageFile = null;
-							selectedImagePreview = content?.imagePreviewDataUrl ?? null;
+							selectedImagePreview = content.imagePreviewDataUrl;
 							removeImage = false;
 						}} disabled={saving || (!selectedImageFile && !removeImage)}>
 							Reset image changes

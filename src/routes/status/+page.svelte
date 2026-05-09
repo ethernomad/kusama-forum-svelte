@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { connections } from '$lib/services/connections.svelte';
-	import { clearAckedCidEntries, ipfsPinningQueue } from '$lib/services/ipfs-pinning-queue.svelte';
+	import { clearAckedCidEntries, ipfsPinningQueue, retryCidAck } from '$lib/services/ipfs-pinning-queue.svelte';
 
 	function formatTimestamp(value: number | null): string {
 		return value == null ? '—' : new Date(value).toLocaleString();
@@ -9,10 +9,10 @@
 
 <div class="max-w-5xl space-y-6">
 	<header class="card border-dashed p-6">
-		<p class="text-sm font-medium text-surface-700-300">Publish-time pinning</p>
+		<p class="text-sm font-medium text-surface-700-300">Background publishing</p>
 		<h1 class="mt-1 text-2xl font-semibold">IPFS pinner status</h1>
 		<p class="mt-2 text-sm text-surface-700-300">
-			This history tracks the most recent CID acknowledgement attempts triggered when the user publishes content.
+			This queue tracks CIDs that have been published locally and still need an acknowledgement from the local pinner.
 		</p>
 	</header>
 
@@ -44,6 +44,7 @@
 			<div class="flex flex-wrap items-center justify-between gap-3">
 				<div class="text-sm text-surface-700-300">
 					<span class="font-medium text-white">{ipfsPinningQueue.entries.length}</span> total ·
+					<span class="font-medium text-white">{ipfsPinningQueue.entries.filter((entry) => entry.status === 'queued').length}</span> queued ·
 					<span class="font-medium text-white">{ipfsPinningQueue.entries.filter((entry) => entry.status === 'sending').length}</span> sending ·
 					<span class="font-medium text-white">{ipfsPinningQueue.entries.filter((entry) => entry.status === 'failed').length}</span> failed ·
 					<span class="font-medium text-white">{ipfsPinningQueue.entries.filter((entry) => entry.status === 'acked').length}</span> acked
@@ -57,7 +58,7 @@
 
 	<section class="card overflow-hidden">
 		{#if ipfsPinningQueue.entries.length === 0}
-			<div class="p-6 text-sm text-surface-700-300">No recent publish-time CID sends have been recorded.</div>
+			<div class="p-6 text-sm text-surface-700-300">No CIDs are waiting for the pinner.</div>
 		{:else}
 			<div class="overflow-x-auto">
 				<table class="min-w-full text-left text-sm">
@@ -88,7 +89,11 @@
 								<td class="px-4 py-3 text-xs text-surface-700-300">{formatTimestamp(entry.createdAt)}</td>
 								<td class="px-4 py-3 text-xs text-surface-700-300">{formatTimestamp(entry.updatedAt)}</td>
 								<td class="px-4 py-3 text-xs text-surface-700-300">{formatTimestamp(entry.ackedAt)}</td>
-								<td class="px-4 py-3 text-xs text-surface-700-300">—</td>
+								<td class="px-4 py-3">
+									{#if entry.status === 'failed'}
+										<button class="btn variant-outline" type="button" onclick={() => retryCidAck(entry.cid)}>Retry</button>
+									{/if}
+								</td>
 							</tr>
 						{/each}
 					</tbody>

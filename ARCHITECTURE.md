@@ -80,7 +80,7 @@ Important routes:
 - `src/routes/item_id/[item_id]/+page.svelte` — generic content viewer for any item
 - `src/routes/item_id/[item_id]/edit/+page.svelte` — revision editor for editable items
 - `src/routes/item_id/[item_id]/debug/+page.svelte` — low-level inspection of chain/indexed/IPFS state
-- `src/routes/status/ipfs/+page.svelte` — IPFS-specific status page with recent pinner acknowledgement attempts
+- `src/routes/status/ipfs/+page.svelte` — IPFS-specific status page with pinner queue details
 
 ### 2. Stateful client services
 
@@ -96,7 +96,7 @@ Key services:
 - `profile.ts` — profile-specific encoding/loading/publishing
 - `content-images.ts` — shared image mixin encoding/decoding, JPEG conversion, mipmap generation, and IPFS preview loading used by both profile and forum content flows
 - `ipfs-publish.ts` — publish bytes to IPFS and coordinate local pinner ACKs
-- `ipfs-pinning-queue.svelte.ts` — persistent history of publish-time local pinner acknowledgement attempts
+- `ipfs-pinning-queue.svelte.ts` — persistent background queue for local pinner acknowledgements
 - `reactions.ts` — fetch and submit reactions
 - `chain-signing.ts` — generic extension signing/finalization helper
 
@@ -164,7 +164,7 @@ On unmount it stops:
 - tries to dial the local IPFS/Kubo pinner
 - periodically refreshes IPFS status
 - periodically retries local reconnects
-- keeps local IPFS connectivity ready so publish-time pinner acknowledgements can start immediately
+- flushes any pending CID ACK queue entries once local connectivity exists
 
 ### Why Helia is global
 
@@ -198,7 +198,7 @@ The sidebar component, `src/lib/components/StatusSidebar.svelte`, reads this sta
 The dedicated status page, `src/routes/status/ipfs/+page.svelte`, is specifically for IPFS and shows:
 
 - Helia swarm target status
-- recent pinner acknowledgement counts
+- pinner queue counts
 - local dial errors for the IPFS/Kubo connection
 
 So the sidebar is effectively the operator dashboard for the dapp.
@@ -413,8 +413,8 @@ Publishing always follows the same broad pattern:
 1. validate chain/IPFS/account readiness
 2. build protobuf payload in-browser
 3. add bytes to IPFS through Helia
-4. create, sign, and broadcast the chain extrinsic via extension
-5. send the published CID set to the local pinner
+4. enqueue CID for local pinner ACK
+5. sign and submit the chain extrinsic via extension
 6. wait for finalization
 7. rely on the indexer to make the new state discoverable
 
@@ -426,21 +426,21 @@ The app does not treat “stored in browser Helia only” as enough. It requires
 
 ### CID and ACK workflow
 
-When the user triggers a publish:
+When bytes are added to IPFS:
 
-- the content CID and any image CIDs are gathered into one publish-time batch
-- the app starts `provide` + ACK work for all of those CIDs simultaneously
+- the CID is added to the local `ipfsPinningQueue`
+- background processes attempt to `provide` the CID on the DHT
 - the app opens `/x/acuity/ack/1.0.0` to the local pinner peer
-- it sends each CID and expects `ACK: received <cid>`
+- it sends the CID and expects `ACK: received <cid>`
 
 This ACK step is a notable part of the architecture:
 
-- pinning starts only when the user publishes content
-- related content/image CIDs are sent to the pinner in parallel
-- the recent attempt history survives refresh because it is stored in local storage
-- failures are surfaced immediately to the publish flow instead of being retried in the background
+- publishing is user-visible immediately
+- pinning confirmation is tracked separately
+- failures survive refresh because the queue is stored in local storage
+- retries happen automatically when the local IPFS connection comes back
 
-The status UI for recent attempts is exposed at `/status`.
+The queue UI is exposed at `/status`.
 
 ---
 
@@ -758,7 +758,7 @@ All real enforcement still happens on-chain when the extrinsic is executed.
 ### Persisted in browser local storage
 
 - active selected account
-- IPFS pinner acknowledgement history
+- IPFS pinner ACK queue
 
 ### Derived from indexer
 
@@ -790,12 +790,11 @@ The app is designed around the fact that its external dependencies may come and 
 
 - publishing is blocked unless the required local IPFS connection exists
 - already-published content may fail to load if not retrievable from IPFS
-- publish actions fail fast if the local pinner cannot acknowledge the content CIDs
-- recent CID acknowledgement results remain visible in local storage for operator inspection
+- pending CID ACKs remain in local storage until connectivity returns
 
-### Why publish-time ACKs are important
+### Why the ACK queue is important
 
-The app requires the local pinner to acknowledge the content at publish time. That keeps the publish flow strict: the user only proceeds once the browser has both uploaded the bytes and sent the related CIDs to the local pinner.
+The queue decouples “user completed publish flow” from “local pinner definitely acknowledged CID”. That is a good fit for a browser dapp, where connectivity can be intermittent and the page can be refreshed at any time.
 
 ---
 
@@ -874,7 +873,7 @@ A quick map of the most important files:
 - `src/lib/services/indexer.svelte.ts` — indexer transport and subscriptions
 - `src/lib/services/ipfs-local.ts` — local IPFS peer detection
 - `src/lib/services/ipfs-publish.ts` — IPFS publish + local ACK protocol
-- `src/lib/services/ipfs-pinning-queue.svelte.ts` — persistent ACK attempt history
+- `src/lib/services/ipfs-pinning-queue.svelte.ts` — persistent ACK queue
 
 ### Content logic
 
@@ -914,7 +913,7 @@ Here is the full path for creating a forum post:
 4. `CategoryForumPosts.svelte` submits `saveForumPost()`.
 5. `content.ts` encodes the post into protobuf item bytes.
 6. `publishBytesToIpfs()` adds the bytes to Helia/UnixFS.
-7. The resulting CID is sent to the local pinner together with any related image CIDs.
+7. The resulting CID is queued for local pinner acknowledgement.
 8. `saveForumPost()` derives an item ID from account + nonce + namespace.
 9. It submits `content.publishItem(nonce, [], flags, [categoryId], [], revisionHash)`.
 10. The extension signs the extrinsic.
@@ -923,7 +922,7 @@ Here is the full path for creating a forum post:
 13. The viewer route queries the indexer for revision events.
 14. The viewer fetches the IPFS payload via Helia.
 15. The post is decoded and rendered.
-16. After the transaction has been signed and broadcast, the publish flow advertises the CID batch and waits for the local pinner acknowledgements while also waiting for finalization.
+16. Background ACK/provide logic advertises the CID and waits for the local pinner acknowledgement.
 17. Future revisions or comments appear live through indexer subscriptions.
 
 That sequence is representative of almost every feature in the app.
