@@ -122,7 +122,6 @@
 		<div>
 			<p class="text-sm font-medium text-surface-700-300">Content viewer</p>
 			<h1 class="mt-1 text-2xl font-semibold">{contentTypeLabel(content)}</h1>
-			<p class="mt-2 text-sm break-all text-surface-700-300">{itemId}</p>
 		</div>
 	</header>
 
@@ -155,11 +154,6 @@
 	{:else if content}
 		<section class="card p-6">
 			<div class="mb-4 space-y-1">
-				<p class="text-xs text-surface-700-300 uppercase">Type</p>
-				<p class="text-sm font-medium">{contentTypeLabel(content)}</p>
-				<p class="text-xs text-surface-700-300">
-					content_type_id: {content.contentTypeId ?? '—'}
-				</p>
 				<p class="text-xs text-surface-700-300">
 					Created: {formatTimestamp(content.createdAtMs)}
 				</p>
