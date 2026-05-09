@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Menu } from '@skeletonlabs/skeleton-svelte';
 	import { injectedAccounts } from '$lib/services/accounts.svelte';
 	import { connections } from '$lib/services/connections.svelte';
 	import {
@@ -23,13 +24,21 @@
 	let error = $state('');
 	let requestId = 0;
 
-	const allEmoji = AVAILABLE_EMOJI_CODEPOINTS.map((codepoint) => ({
-		codepoint,
-		emoji: String.fromCodePoint(codepoint)
-	}));
+	const activeCodepoints = $derived(
+		summaries.filter((entry) => entry.iReacted).map((entry) => entry.codepoint)
+	);
+	const pickerEmoji = $derived(
+		AVAILABLE_EMOJI_CODEPOINTS.filter((codepoint) => !activeCodepoints.includes(codepoint)).map(
+			(codepoint) => ({
+				codepoint,
+				emoji: String.fromCodePoint(codepoint)
+			})
+		)
+	);
+	const reactionsDisabled = $derived(!injectedAccounts.activeAccount || !connections.api || saving);
 
 	function activeSet(): number[] {
-		return summaries.filter((entry) => entry.iReacted).map((entry) => entry.codepoint);
+		return activeCodepoints;
 	}
 
 	async function refresh() {
@@ -59,10 +68,11 @@
 
 	async function toggleReaction(codepoint: number) {
 		if (!connections.api || !injectedAccounts.activeAccount || saving) return;
-		const currentSet = new Set(activeSet());
-		if (currentSet.has(codepoint)) currentSet.delete(codepoint);
-		else currentSet.add(codepoint);
-		const nextSet = [...currentSet].sort((a, b) => a - b);
+		const currentSet = activeSet();
+		const nextSet = (currentSet.includes(codepoint)
+			? currentSet.filter((entry) => entry !== codepoint)
+			: [...currentSet, codepoint]
+		).sort((a, b) => a - b);
 		const previous = summaries;
 		summaries = optimisticReactionUpdate(previous, injectedAccounts.activeAccount.address, nextSet);
 		saving = true;
@@ -83,29 +93,51 @@
 			saving = false;
 		}
 	}
-
-	function summaryFor(codepoint: number): ReactionSummary | undefined {
-		return summaries.find((entry) => entry.codepoint === codepoint);
-	}
 </script>
 
 <div class="mt-3 space-y-2">
-	<div class="flex flex-wrap gap-2">
-		{#each allEmoji as option (option.codepoint)}
-			{@const summary = summaryFor(option.codepoint)}
+	<div class="flex flex-wrap items-center gap-1.5">
+		{#each summaries as summary (summary.codepoint)}
 			<button
 				type="button"
-				class={`rounded-full border px-2 py-1 text-sm transition-colors ${summary?.iReacted ? 'border-primary-500 bg-primary-500/15' : 'border-surface-200-800 bg-surface-50-950'} ${saving ? 'opacity-70' : ''}`}
-				disabled={!injectedAccounts.activeAccount || !connections.api || saving}
-				onclick={() => void toggleReaction(option.codepoint)}
-				title={summary?.reactors.length ? summary.reactors.join(', ') : 'No reactions yet'}
+				class={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-sm transition-colors ${summary.iReacted ? 'border-primary-400 bg-primary-500/20 font-semibold text-primary-50' : 'border-surface-200-800 bg-surface-50-950 hover:bg-surface-100-900'} ${saving ? 'opacity-70' : ''}`}
+				disabled={reactionsDisabled}
+				onclick={() => void toggleReaction(summary.codepoint)}
+				title={summary.reactors.length ? summary.reactors.join(', ') : 'No reactions yet'}
 			>
-				<span>{option.emoji}</span>
-				{#if summary?.count}
-					<span class="ml-1 text-xs">{summary.count}</span>
-				{/if}
+				<span>{summary.emojiChar}</span>
+				<span class="text-xs">{summary.count}</span>
 			</button>
 		{/each}
+
+		{#if injectedAccounts.activeAccount && connections.api && pickerEmoji.length > 0}
+			<Menu positioning={{ placement: 'bottom-start' }}>
+				<Menu.Trigger
+					class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-surface-300-700 bg-transparent text-sm text-surface-700-300 transition-colors hover:border-primary-400 hover:bg-primary-500/10 hover:text-primary-100"
+					disabled={saving}
+					aria-label="Add reaction"
+				>
+					+
+				</Menu.Trigger>
+				<Menu.Positioner>
+					<Menu.Content
+						class="border-surface-200-800 bg-surface-50-950 grid max-w-80 grid-cols-6 gap-1 rounded-xl border p-2 shadow-xl"
+					>
+						{#each pickerEmoji as option (option.codepoint)}
+							<Menu.Item
+								value={String(option.codepoint)}
+								class="hover:bg-surface-100-900 flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-xl outline-none"
+								disabled={saving}
+								onclick={() => void toggleReaction(option.codepoint)}
+								title={`React with ${option.emoji}`}
+							>
+								{option.emoji}
+							</Menu.Item>
+						{/each}
+					</Menu.Content>
+				</Menu.Positioner>
+			</Menu>
+		{/if}
 	</div>
 
 	{#if error}

@@ -631,6 +631,10 @@ Reactions are implemented separately from main content in `src/lib/services/reac
 `Reactions.svelte`:
 
 - loads reaction summaries when item/revision/account changes
+- renders only reactions that currently have counts as compact chips
+- lets the active user toggle an existing chip to remove/add that emoji
+- uses a Skeleton `Menu` behind a small `+` button for adding new emoji reactions
+- hides emoji the active user has already selected from the add-reaction picker
 - performs optimistic UI updates
 - reverts on error
 - refreshes from the indexer after finalization
