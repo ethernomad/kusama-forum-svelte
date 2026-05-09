@@ -30,15 +30,13 @@ function u8a(bytes: Uint8Array): Bytes {
 	return copy;
 }
 
-function concatBytes(...parts: Uint8Array[]): Uint8Array {
-	const length = parts.reduce((sum, bytes) => sum + bytes.length, 0);
-	const out = new Uint8Array(length);
-	let offset = 0;
-	for (const bytes of parts) {
-		out.set(bytes, offset);
-		offset += bytes.length;
+function bytesToBase64(bytes: Uint8Array): string {
+	const chunkSize = 0x8000;
+	let binary = '';
+	for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+		binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
 	}
-	return out;
+	return btoa(binary);
 }
 
 function writeBytesField(writer: ProtoWriter, fieldNumber: number, value: Bytes) {
@@ -171,7 +169,7 @@ export async function buildImagePayload(
 			const outHeight = Math.max(1, Math.round(height / scale));
 			const jpegBytes = await renderJpeg(bitmap, outWidth, outHeight);
 			if (!previewDataUrl) {
-				previewDataUrl = `data:image/jpeg;base64,${btoa(String.fromCharCode(...jpegBytes))}`;
+				previewDataUrl = `data:image/jpeg;base64,${bytesToBase64(jpegBytes)}`;
 			}
 			const cid = await addIpfs(jpegBytes);
 			mipmapLevel.push({
@@ -208,5 +206,5 @@ export async function previewDataUrlForImageMixin(payload: Bytes): Promise<strin
 			: null;
 	if (!multihash) return null;
 	const bytes = await loadIpfsBytesByCid(multihashBytesToCid(multihash));
-	return `data:image/jpeg;base64,${btoa(String.fromCharCode(...bytes))}`;
+	return `data:image/jpeg;base64,${bytesToBase64(bytes)}`;
 }
