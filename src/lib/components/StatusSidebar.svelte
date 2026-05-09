@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { Navigation } from '@skeletonlabs/skeleton-svelte';
 	import AccountSelector from '$lib/components/AccountSelector.svelte';
 	import { connections } from '$lib/services/connections.svelte';
 
@@ -67,35 +66,30 @@
 
 	<AccountSelector />
 
-	<Navigation
-		layout="sidebar"
-		class="rounded-xl border border-surface-200-800 bg-surface-50-950 p-2 shadow-sm"
-	>
-		<Navigation.Content>
-			<Navigation.Group class="space-y-1">
-				{#each menuItems as item (item.href)}
-					<Navigation.TriggerAnchor
-						href={resolve(item.href)}
-						aria-current={page.url.pathname === item.href ? 'page' : undefined}
-						class={[
-							'block rounded-lg border px-3 py-3 transition-colors',
-							page.url.pathname === item.href
-								? 'border-primary-500/30 bg-primary-500/10'
-								: 'border-transparent hover:bg-surface-100-900'
-						]}
-					>
-						<div class="flex items-start justify-between gap-3">
-							<div class="min-w-0">
-								<p class="text-sm font-medium">{item.label}</p>
-								<p class="mt-1 text-xs text-surface-700-300">{item.description}</p>
-							</div>
-							<span class="text-xs text-surface-700-300">→</span>
+	<nav class="rounded-xl border border-surface-200-800 bg-surface-50-950 p-2 shadow-sm">
+		<div class="space-y-1">
+			{#each menuItems as item (item.href)}
+				<a
+					href={resolve(item.href)}
+					aria-current={page.url.pathname === item.href ? 'page' : undefined}
+					class={[
+						'block rounded-lg border px-3 py-3 transition-colors',
+						page.url.pathname === item.href
+							? 'border-primary-500/30 bg-primary-500/10'
+							: 'border-transparent hover:bg-surface-100-900'
+					]}
+				>
+					<div class="flex items-start justify-between gap-3">
+						<div class="min-w-0">
+							<p class="text-sm font-medium">{item.label}</p>
+							<p class="mt-1 text-xs text-surface-700-300">{item.description}</p>
 						</div>
-					</Navigation.TriggerAnchor>
-				{/each}
-			</Navigation.Group>
-		</Navigation.Content>
-	</Navigation>
+						<span class="text-xs text-surface-700-300">→</span>
+					</div>
+				</a>
+			{/each}
+		</div>
+	</nav>
 
 	<section class="rounded-xl border border-surface-200-800 bg-surface-50-950 p-4">
 		<div class="mb-4">
