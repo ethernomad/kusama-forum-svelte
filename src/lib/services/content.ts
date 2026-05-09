@@ -7,7 +7,7 @@ import protobuf from 'protobufjs/minimal';
 import { cryptoWaitReady, decodeAddress } from '@polkadot/util-crypto';
 
 import type { InjectedAccount } from './accounts.svelte';
-import { signAndSubmit, type SignableExtrinsic } from './chain-signing';
+import { signAndFinalize, signAndSubmit, type SignableExtrinsic } from './chain-signing';
 import { buildImagePayload, decodeImageMixin, previewDataUrlForImageMixin } from './content-images';
 import { getIndexedEvents } from './indexer.svelte';
 import { pinPublishedCids, publishBytesToIpfs } from './ipfs-publish';
@@ -17,14 +17,6 @@ const { Reader, Writer } = protobuf;
 type ProtoReader = InstanceType<typeof Reader>;
 type ProtoWriter = InstanceType<typeof Writer>;
 type Bytes = Uint8Array<ArrayBufferLike>;
-
-function logPublishStep(message: string, details?: Record<string, unknown>): void {
-	if (details) {
-		console.log(`[publish] ${message}`, details);
-		return;
-	}
-	console.log(`[publish] ${message}`);
-}
 
 export type MixinPayload = {
 	mixinId: number;
@@ -873,15 +865,7 @@ async function saveEncodedContentItem(params: {
 	buildAdditionalCalls?: (itemIdBytes: Uint8Array) => unknown[];
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
 	const { api, heliaNode, account, itemPayload, parents, links, flags, buildAdditionalCalls } = params;
-	logPublishStep('Preparing content publish', {
-		account: account.address,
-		parents,
-		links,
-		flags,
-		byteLength: itemPayload.length
-	});
 	const { digestHex: revisionIpfsHashHex, cidText } = await uploadIpfsDigest(heliaNode, itemPayload);
-	logPublishStep('Created revision digest for content publish', { revisionIpfsHashHex, cid: cidText });
 	const nonce = crypto.getRandomValues(new Uint8Array(32));
 	const { itemIdBytes, extrinsic } = await publishDerivedItemAndFinalize({
 		api,
@@ -893,13 +877,9 @@ async function saveEncodedContentItem(params: {
 		revisionIpfsHashBytes: hexToBytes(revisionIpfsHashHex),
 		buildAdditionalCalls
 	});
-	logPublishStep('Built content publish extrinsic', { itemIdHex: toHex(itemIdBytes) });
-	const { waitForInBlock } = await signAndSubmit(extrinsic, account);
-	logPublishStep('Transaction published; starting IPFS propagation', { itemIdHex: toHex(itemIdBytes), cids: [cidText] });
+	const { waitForFinalization } = await signAndSubmit(extrinsic, account);
 	await pinPublishedCids(heliaNode, [cidText]);
-	logPublishStep('Waiting for transaction block inclusion', { itemIdHex: toHex(itemIdBytes) });
-	await waitForInBlock;
-	logPublishStep('Updating UI after block inclusion', { itemIdHex: toHex(itemIdBytes) });
+	await waitForFinalization;
 	return { itemIdHex: toHex(itemIdBytes), revisionIpfsHashHex };
 }
 
@@ -934,7 +914,6 @@ export async function saveForum(params: {
 	prepared?: PreparedForumSave | null;
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
 	const { api, heliaNode, account, draft, selectedImageFile = null, prepared } = params;
-	logPublishStep('Preparing forum publish', { account: account.address, title: draft.title });
 	const resolved = await resolvePreparedValue({
 		input: { heliaNode, draft, selectedImageFile },
 		prepared,
@@ -958,13 +937,9 @@ export async function saveForum(params: {
 			)
 		]
 	});
-	logPublishStep('Built forum publish extrinsic', { itemIdHex: toHex(itemIdBytes), cids: resolved.pinnerCids });
-	const { waitForInBlock } = await signAndSubmit(extrinsic, account);
-	logPublishStep('Forum transaction published; starting IPFS propagation', { itemIdHex: toHex(itemIdBytes), cids: resolved.pinnerCids });
+	const { waitForFinalization } = await signAndSubmit(extrinsic, account);
 	await pinPublishedCids(heliaNode, resolved.pinnerCids);
-	logPublishStep('Waiting for forum transaction block inclusion', { itemIdHex: toHex(itemIdBytes) });
-	await waitForInBlock;
-	logPublishStep('Updating UI after forum block inclusion', { itemIdHex: toHex(itemIdBytes) });
+	await waitForFinalization;
 	return {
 		itemIdHex: toHex(itemIdBytes),
 		revisionIpfsHashHex: resolved.revisionIpfsHashHex
@@ -1077,7 +1052,6 @@ export async function publishContentRevision(params: {
 	prepared?: PreparedContentRevision | null;
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
 	const { api, heliaNode, account, content, draft, selectedImageFile = null, removeImage = false, prepared } = params;
-	logPublishStep('Preparing content revision publish', { account: account.address, itemIdHex: content.itemIdHex });
 	if (!canEditContent(content, account))
 		throw new Error('The active account cannot edit this content item.');
 	const resolved = await resolvePreparedValue({
@@ -1107,28 +1081,24 @@ export async function publishContentRevision(params: {
 		throw new Error(`Failed to build content.publishRevision extrinsic: ${error instanceof Error ? error.message : String(error)}`);
 	}
 
-	let waitForInBlock: Promise<void>;
+	let waitForFinalization: Promise<void>;
 	try {
-		logPublishStep('Built content revision extrinsic', { itemIdHex: content.itemIdHex, cids: resolved.pinnerCids });
-		({ waitForInBlock } = await signAndSubmit(publishRevision, account));
+		({ waitForFinalization } = await signAndSubmit(publishRevision, account));
 	} catch (error) {
 		throw new Error(`Failed to sign or submit content.publishRevision: ${error instanceof Error ? error.message : String(error)}`);
 	}
 
 	try {
-		logPublishStep('Revision transaction published; starting IPFS propagation', { itemIdHex: content.itemIdHex, cids: resolved.pinnerCids });
 		await pinPublishedCids(heliaNode, resolved.pinnerCids);
 	} catch (error) {
-		throw new Error(`Transaction was published, but failed to send published CIDs to the local pinner: ${error instanceof Error ? error.message : String(error)}`);
+		throw new Error(`Transaction submitted, but failed to send published CIDs to the local pinner: ${error instanceof Error ? error.message : String(error)}`);
 	}
 
 	try {
-		logPublishStep('Waiting for revision transaction block inclusion', { itemIdHex: content.itemIdHex });
-		await waitForInBlock;
+		await waitForFinalization;
 	} catch (error) {
-		throw new Error(`content.publishRevision was published, but failed before block inclusion: ${error instanceof Error ? error.message : String(error)}`);
+		throw new Error(`content.publishRevision was submitted, but failed before finalization: ${error instanceof Error ? error.message : String(error)}`);
 	}
-	logPublishStep('Updating UI after revision block inclusion', { itemIdHex: content.itemIdHex });
 	return { itemIdHex: content.itemIdHex, revisionIpfsHashHex: resolved.revisionIpfsHashHex };
 }
 
@@ -1137,14 +1107,10 @@ export async function retractItem(
 	account: InjectedAccount,
 	itemIdHex: string
 ): Promise<void> {
-	logPublishStep('Preparing item retraction', { account: account.address, itemIdHex });
 	const extrinsic = (
 		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
 	).content.retractItem(hexToBytes(itemIdHex));
-	const { waitForInBlock } = await signAndSubmit(extrinsic as SignableExtrinsic, account);
-	logPublishStep('Retraction transaction published; waiting for block inclusion', { itemIdHex });
-	await waitForInBlock;
-	logPublishStep('Updating UI after retraction block inclusion', { itemIdHex });
+	await signAndFinalize(extrinsic as SignableExtrinsic, account);
 }
 
 function isValidForumCategory(
