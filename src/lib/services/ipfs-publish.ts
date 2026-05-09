@@ -22,6 +22,14 @@ const ACK_PROTOCOL = '/x/acuity/ack/1.0.0';
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
+function logPublishStep(message: string, details?: Record<string, unknown>): void {
+	if (details) {
+		console.log(`[publish] ${message}`, details);
+		return;
+	}
+	console.log(`[publish] ${message}`);
+}
+
 export type PublishResult = {
 	cid: CID;
 };
@@ -37,11 +45,13 @@ export async function publishBytesToIpfs(
 	bytes: Uint8Array
 ): Promise<PublishResult> {
 	assertDefaultLocalIpfsConnection(heliaNode);
+	logPublishStep('Publishing bytes to IPFS', { byteLength: bytes.length });
 	const fs = unixfs(heliaNode);
 	const cid = await fs.addBytes(bytes, {
 		cidVersion: 0,
 		rawLeaves: false
 	});
+	logPublishStep('Obtained base CID for content', { cid: cid.toString() });
 	return { cid };
 }
 
@@ -50,6 +60,7 @@ export async function pinPublishedCids(heliaNode: Helia, cids: Array<CID | strin
 	const cidTexts = [...new Set(cids.map((cid) => (typeof cid === 'string' ? cid : cid.toString())).filter(Boolean))];
 	if (cidTexts.length === 0) return;
 
+	logPublishStep('Starting IPFS propagation for published CIDs', { cids: cidTexts });
 	beginCidPinningBatch(cidTexts);
 	const results = await Promise.allSettled(
 		cidTexts.map(async (cidText) => {
@@ -69,22 +80,27 @@ export async function pinPublishedCids(heliaNode: Helia, cids: Array<CID | strin
 			: []
 	);
 	if (failures.length > 0) {
+		logPublishStep('Local IPFS pinner ACK failed', { failures });
 		throw new Error(
 			`Failed to send ${failures.length} CID${failures.length === 1 ? '' : 's'} to the local IPFS pinner: ${failures
 				.map((failure) => `${failure.cid} (${failure.message})`)
 				.join('; ')}`
 		);
 	}
+	logPublishStep('All published CIDs acknowledged by local IPFS node', { cids: cidTexts });
 }
 
 export async function provideAndAckCid(heliaNode: Helia, cid: CID | string): Promise<void> {
 	assertDefaultLocalIpfsConnection(heliaNode);
 	const cidText = typeof cid === 'string' ? cid : cid.toString();
 	beginIpfsProvide(cidText);
+	logPublishStep('Providing CID to IPFS routing', { cid: cidText });
 	try {
 		await heliaNode.routing.provide(typeof cid === 'string' ? CID.parse(cidText) : cid);
+		logPublishStep('Sending CID to local IPFS pinner', { cid: cidText });
 		await pushCidAck(heliaNode, cidText);
 		completeIpfsProvide(cidText);
+		logPublishStep('Received local IPFS ACK', { cid: cidText });
 	} catch (error) {
 		failIpfsProvide(cidText, error);
 		throw error;
@@ -97,6 +113,7 @@ async function pushCidAck(heliaNode: Helia, cidText: string): Promise<void> {
 		throw new Error('Publishing requires an active connection to the local IPFS pinner.');
 	}
 
+	logPublishStep('Opening ACK stream to local IPFS node', { cid: cidText, target });
 	const stream = await heliaNode.libp2p.dialProtocol(multiaddr(target), ACK_PROTOCOL);
 	const payload = textEncoder.encode(`${cidText}\n`);
 	const expectedAck = `ACK: received ${cidText}`;

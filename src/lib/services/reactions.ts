@@ -2,6 +2,7 @@ import type { ApiPromise } from '@polkadot/api';
 import { encodeAddress } from '@polkadot/util-crypto';
 
 import type { InjectedAccount } from './accounts.svelte';
+import { signAndSubmit } from './chain-signing';
 import { accountAddressToHex } from './content';
 import {
 	getIndexedEvents,
@@ -172,9 +173,6 @@ export async function setReactions(params: {
 	revisionId: number;
 	reactions: number[];
 }): Promise<void> {
-	if (typeof window === 'undefined') throw new Error('Signing is only available in the browser.');
-	const { web3FromSource } = await import('@polkadot/extension-dapp');
-	const injector = await web3FromSource(String(params.account.meta.source ?? ''));
 	const extrinsic = (
 		params.api.tx as Record<
 			string,
@@ -190,23 +188,6 @@ export async function setReactions(params: {
 		params.revisionId,
 		params.reactions
 	);
-	await new Promise<void>((resolve, reject) => {
-		let unsubscribe: (() => void) | undefined;
-		void extrinsic
-			.signAndSend(
-				params.account.address,
-				{ signer: injector.signer },
-				(result: { status: { isFinalized?: boolean }; dispatchError?: unknown }) => {
-					if (result.dispatchError) {
-						unsubscribe?.();
-						reject(new Error('Transaction failed on chain.'));
-					} else if (result.status?.isFinalized) {
-						unsubscribe?.();
-						resolve();
-					}
-				}
-			)
-			.then((unsub: () => void) => (unsubscribe = unsub))
-			.catch(reject);
-	});
+	const { waitForInBlock } = await signAndSubmit(extrinsic, params.account);
+	await waitForInBlock;
 }

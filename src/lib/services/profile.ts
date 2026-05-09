@@ -10,8 +10,16 @@ const { Reader, Writer } = protobuf;
 type ProtoReader = InstanceType<typeof Reader>;
 type ProtoWriter = InstanceType<typeof Writer>;
 
+function logPublishStep(message: string, details?: Record<string, unknown>): void {
+	if (details) {
+		console.log(`[publish] ${message}`, details);
+		return;
+	}
+	console.log(`[publish] ${message}`);
+}
+
 import type { InjectedAccount } from './accounts.svelte';
-import { signAndFinalize, signAndSubmit, type SignableExtrinsic } from './chain-signing';
+import { signAndSubmit, type SignableExtrinsic } from './chain-signing';
 import { buildImagePayload, previewDataUrlForImageMixin } from './content-images';
 import { getIndexedEvents } from './indexer.svelte';
 import { pinPublishedCids, publishBytesToIpfs } from './ipfs-publish';
@@ -568,6 +576,7 @@ export async function saveProfile(params: {
 	prepared?: PreparedProfileSave | null;
 }): Promise<SaveProfileResult> {
 	const { api, heliaNode, account, draft, existingItemIdHex, existingImagePayload, selectedImageFile, prepared } = params;
+	logPublishStep('Preparing profile publish', { account: account.address, existingItemIdHex });
 	const resolved = await resolvePreparedValue({
 		input: { heliaNode, draft, existingItemIdHex, existingImagePayload, selectedImageFile },
 		prepared,
@@ -584,9 +593,13 @@ export async function saveProfile(params: {
 	if (existingItemIdHex) {
 		const itemIdBytes = hexToBytes(existingItemIdHex);
 		const extrinsic = createPublishRevisionExtrinsic(api, itemIdBytes, revisionIpfsHashBytes);
-		const { waitForFinalization } = await signAndSubmit(extrinsic, account);
+		logPublishStep('Built profile revision extrinsic', { itemIdHex: existingItemIdHex, cids: resolved.pinnerCids });
+		const { waitForInBlock } = await signAndSubmit(extrinsic, account);
+		logPublishStep('Profile revision published; starting IPFS propagation', { itemIdHex: existingItemIdHex, cids: resolved.pinnerCids });
 		await pinPublishedCids(heliaNode, resolved.pinnerCids);
-		await waitForFinalization;
+		logPublishStep('Waiting for profile revision block inclusion', { itemIdHex: existingItemIdHex });
+		await waitForInBlock;
+		logPublishStep('Updating UI after profile revision block inclusion', { itemIdHex: existingItemIdHex });
 		return {
 			exists: true,
 			itemIdHex: existingItemIdHex,
@@ -614,9 +627,13 @@ export async function saveProfile(params: {
 		publishItem,
 		setProfile
 	]);
-	const { waitForFinalization } = await signAndSubmit(batch as SignableExtrinsic, account);
+	logPublishStep('Built profile create extrinsic batch', { itemIdHex: toHex(itemIdBytes), cids: resolved.pinnerCids });
+	const { waitForInBlock } = await signAndSubmit(batch as SignableExtrinsic, account);
+	logPublishStep('Profile create transaction published; starting IPFS propagation', { itemIdHex: toHex(itemIdBytes), cids: resolved.pinnerCids });
 	await pinPublishedCids(heliaNode, resolved.pinnerCids);
-	await waitForFinalization;
+	logPublishStep('Waiting for profile create block inclusion', { itemIdHex: toHex(itemIdBytes) });
+	await waitForInBlock;
+	logPublishStep('Updating UI after profile create block inclusion', { itemIdHex: toHex(itemIdBytes) });
 
 	return {
 		exists: true,

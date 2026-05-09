@@ -98,7 +98,7 @@ Key services:
 - `ipfs-publish.ts` — publish bytes to IPFS and coordinate local pinner ACKs
 - `ipfs-pinning-queue.svelte.ts` — persistent history of publish-time local pinner acknowledgement attempts
 - `reactions.ts` — fetch and submit reactions
-- `chain-signing.ts` — generic extension signing/finalization helper
+- `chain-signing.ts` — generic extension signing helper that resolves on publish and exposes block-inclusion waiting without waiting for finalization
 
 These services use Svelte 5 runes-style `$state` objects as shared client-side stores.
 
@@ -414,9 +414,9 @@ Publishing always follows the same broad pattern:
 2. build protobuf payload in-browser
 3. add bytes to IPFS through Helia
 4. create, sign, and broadcast the chain extrinsic via extension
-5. send the published CID set to the local pinner
-6. wait for finalization
-7. rely on the indexer to make the new state discoverable
+5. after the transaction is published, send the published CID set to the local pinner and wait for a real ACK from the local node
+6. wait for block inclusion
+7. update the UI without waiting for finalization and rely on the indexer to make the new state discoverable
 
 ### Why publishing requires a local IPFS connection
 
@@ -657,7 +657,7 @@ Reactions are implemented separately from main content in `src/lib/services/reac
 - loads reaction summaries when item/revision/account changes
 - performs optimistic UI updates
 - reverts on error
-- refreshes from the indexer after finalization
+- refreshes from the indexer after block inclusion
 
 Right now reactions are shown under comments via `CommentItem.svelte`.
 
@@ -918,12 +918,12 @@ Here is the full path for creating a forum post:
 8. `saveForumPost()` derives an item ID from account + nonce + namespace.
 9. It submits `content.publishItem(nonce, [], flags, [categoryId], [], revisionHash)`.
 10. The extension signs the extrinsic.
-11. The app waits for finalization.
+11. The app waits for block inclusion, not finalization.
 12. The user is redirected to `/{itemId}`.
 13. The viewer route queries the indexer for revision events.
 14. The viewer fetches the IPFS payload via Helia.
 15. The post is decoded and rendered.
-16. After the transaction has been signed and broadcast, the publish flow advertises the CID batch and waits for the local pinner acknowledgements while also waiting for finalization.
+16. After the transaction has been signed and broadcast, the publish flow starts IPFS propagation immediately, sends the CID batch to the local pinner, requires an explicit ACK from the local node, and then only waits for block inclusion.
 17. Future revisions or comments appear live through indexer subscriptions.
 
 That sequence is representative of almost every feature in the app.
