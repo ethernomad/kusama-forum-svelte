@@ -54,6 +54,16 @@ export type CategoryDraft = {
 	body: string;
 };
 
+export type PreparedCategorySave = {
+	draft: CategoryDraft;
+	selectedImageFileName: string | null;
+	imagePayload: Bytes | null;
+	imagePreviewDataUrl: string | null;
+	itemPayload: Bytes;
+	revisionIpfsHashHex: string;
+	revisionIpfsHashBytes: Bytes;
+};
+
 export type ForumPostDraft = {
 	title: string;
 	body: string;
@@ -753,6 +763,19 @@ function encodeForumItem(draft: ForumDraft, imagePayload: Bytes | null = null): 
 	});
 }
 
+function encodeCategoryItem(draft: CategoryDraft, imagePayload: Bytes | null = null): Bytes {
+	return encodeContentItem({
+		contentTypeId: CATEGORY_CONTENT_TYPE_ID,
+		title: draft.title,
+		bodyText: draft.body,
+		additionalMixins: imagePayload ? [{ mixinId: IMAGE_MIXIN_ID, payload: imagePayload }] : []
+	});
+}
+
+function matchesCategoryDraft(left: CategoryDraft, right: CategoryDraft): boolean {
+	return equalJsonValue(left, right);
+}
+
 function equalJsonValue(left: unknown, right: unknown): boolean {
 	return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -898,21 +921,47 @@ export async function saveForum(params: {
 	};
 }
 
+export async function prepareCategorySave(params: {
+	draft: CategoryDraft;
+	selectedImageFile?: File | null;
+}): Promise<PreparedCategorySave> {
+	const { draft, selectedImageFile = null } = params;
+	const builtImage = selectedImageFile ? await buildImagePayload(selectedImageFile) : null;
+	const imagePayload = builtImage?.payload ?? null;
+	const itemPayload = encodeCategoryItem(draft, imagePayload);
+	const revisionIpfsHashHex = await uploadIpfsDigest(itemPayload);
+	return {
+		draft: { ...draft },
+		selectedImageFileName: selectedImageFile?.name ?? null,
+		imagePayload,
+		imagePreviewDataUrl: builtImage?.previewDataUrl ?? null,
+		itemPayload,
+		revisionIpfsHashHex,
+		revisionIpfsHashBytes: hexToBytes(revisionIpfsHashHex)
+	};
+}
+
 export async function saveCategory(params: {
 	api: ApiPromise;
 	account: InjectedAccount;
 	forumItemIdHex: string;
 	draft: CategoryDraft;
+	selectedImageFile?: File | null;
+	prepared?: PreparedCategorySave | null;
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
-	const { api, account, forumItemIdHex, draft } = params;
+	const { api, account, forumItemIdHex, draft, selectedImageFile = null, prepared } = params;
+	const resolved = await resolvePreparedValue({
+		input: { draft, selectedImageFile },
+		prepared,
+		canReusePrepared: (candidate, input) =>
+			candidate.selectedImageFileName === (input.selectedImageFile?.name ?? null) &&
+			matchesCategoryDraft(candidate.draft, input.draft),
+		prepare: prepareCategorySave
+	});
 	return await saveEncodedContentItem({
 		api,
 		account,
-		itemPayload: encodeContentItem({
-			contentTypeId: CATEGORY_CONTENT_TYPE_ID,
-			title: draft.title,
-			bodyText: draft.body
-		}),
+		itemPayload: resolved.itemPayload,
 		parents: [forumItemIdHex],
 		links: [],
 		flags: CATEGORY_ITEM_FLAGS

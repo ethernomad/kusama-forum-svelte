@@ -21,6 +21,8 @@
 	let categorySaving = $state(false);
 	let categoryLoading = $state(false);
 	let categoryDraft = $state({ title: '', body: '' });
+	let selectedImageFile: File | null = $state(null);
+	let selectedImagePreview: string | null = $state(null);
 	let categoryRequestId = 0;
 
 	const isForumOwner = $derived.by(() => {
@@ -62,6 +64,22 @@
 		}
 	}
 
+	async function fileToDataUrl(file: File) {
+		return await new Promise<string>((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(String(reader.result ?? ''));
+			reader.onerror = () => reject(reader.error ?? new Error('Failed to read image.'));
+			reader.readAsDataURL(file);
+		});
+	}
+
+	async function handleImageChange(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0] ?? null;
+		selectedImageFile = file;
+		selectedImagePreview = file ? await fileToDataUrl(file) : null;
+	}
+
 	async function addCategory() {
 		if (!connections.api || !connections.ipfsConnected || !injectedAccounts.activeAccount) return;
 		categoryError = '';
@@ -73,9 +91,12 @@
 				api: connections.api,
 				account: injectedAccounts.activeAccount,
 				forumItemIdHex: forum.itemIdHex,
-				draft: categoryDraft
+				draft: categoryDraft,
+				selectedImageFile
 			});
 			categoryDraft = { title: '', body: '' };
+			selectedImageFile = null;
+			selectedImagePreview = null;
 			await goto(resolve(`/item_id/${encodeURIComponent(category.itemIdHex)}`));
 		} catch (value) {
 			categoryError = value instanceof Error ? value.message : String(value);
@@ -122,15 +143,32 @@
 		{#each categories as category (category.itemIdHex)}
 			<article class="card p-4">
 				<div class="flex items-start justify-between gap-3">
-					<div>
-						<a
-							class="text-lg font-semibold hover:underline"
-							href={resolve(`/item_id/${encodeURIComponent(category.itemIdHex)}`)}
-							>{category.title || 'Untitled category'}</a
+					<div class="flex min-w-0 items-start gap-4">
+						<div
+							class="flex aspect-square size-20 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-surface-200-800"
 						>
-						{#if category.bodyText}
-							<p class="mt-2 text-sm whitespace-pre-wrap text-surface-700-300">{category.bodyText}</p>
-						{/if}
+							{#if category.imagePreviewDataUrl}
+								<img
+									src={category.imagePreviewDataUrl}
+									alt={category.title || 'Category image'}
+									class="size-full object-cover"
+								/>
+							{:else}
+								<span class="text-xs font-medium tracking-wide text-surface-700-300 uppercase"
+									>No image</span
+								>
+							{/if}
+						</div>
+						<div class="min-w-0">
+							<a
+								class="text-lg font-semibold hover:underline"
+								href={resolve(`/item_id/${encodeURIComponent(category.itemIdHex)}`)}
+								>{category.title || 'Untitled category'}</a
+							>
+							{#if category.bodyText}
+								<p class="mt-2 text-sm whitespace-pre-wrap text-surface-700-300">{category.bodyText}</p>
+							{/if}
+						</div>
 					</div>
 					{#if isForumOwner}
 						<button
@@ -173,6 +211,36 @@
 				placeholder="Category body"
 				disabled={categorySaving}
 			></textarea>
+			<label class="block space-y-2 text-sm">
+				<span class="font-medium">Category image</span>
+				<input
+					class="input w-full text-sm"
+					type="file"
+					accept="image/*"
+					onchange={handleImageChange}
+					disabled={categorySaving}
+				/>
+				<p class="text-xs text-surface-700-300">
+					Images are re-encoded to JPEG and uploaded to IPFS as mipmap levels before publishing
+					the category item.
+				</p>
+			</label>
+			<div class="space-y-3 card p-4">
+				<p class="text-sm font-medium">Preview</p>
+				{#if selectedImagePreview}
+					<img
+						src={selectedImagePreview}
+						alt={categoryDraft.title.trim() || 'Category image preview'}
+						class="aspect-video w-full rounded-xl object-cover"
+					/>
+				{:else}
+					<div
+						class="flex aspect-video w-full items-center justify-center rounded-xl bg-surface-100-900 text-sm text-surface-700-300"
+					>
+						No image
+					</div>
+				{/if}
+			</div>
 			<button
 				class="variant-filled btn"
 				type="submit"

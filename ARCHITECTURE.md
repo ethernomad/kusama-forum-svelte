@@ -462,6 +462,7 @@ The forum flow now uses a similar batched-create pattern, except its follow-up c
 - parent is the forum item
 - no links
 - flags include category flag
+- optionally re-encodes a selected category image to JPEG, uploads mipmap levels to IPFS, and appends the image mixin to the category payload
 - submits `content.publishItem(...)`
 
 ### 4. Create forum post
@@ -523,6 +524,7 @@ The idea is:
 This is exposed through functions like:
 
 - `prepareForumSave()` — including optional forum image processing and upload
+- `prepareCategorySave()` — including optional category image processing and upload
 - `prepareContentRevision()`
 - `prepareProfileSave()`
 
@@ -668,8 +670,9 @@ The generic item viewer renders specialized sub-components depending on decoded 
 `ForumCategories.svelte`:
 
 - incrementally loads categories from indexed parent-child relationships
+- renders optional square image thumbnails for existing categories
 - renders the category list above the add-category form for easier scanning
-- lets the forum owner create new categories
+- lets the forum owner create new categories, including an optional image using the same upload flow as forum creation
 - lets the owner retract categories
 
 ### Category
