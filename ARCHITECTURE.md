@@ -97,7 +97,7 @@ Key services:
 - `content-images.ts` — shared image mixin encoding/decoding, JPEG conversion, mipmap generation, and IPFS preview loading used by both profile and forum content flows
 - `ipfs.ts` — direct Kubo HTTP API helpers for `/api/v0/id`, `/api/v0/add`, and `/api/v0/cat`
 - `reactions.ts` — fetch and submit reactions
-- `chain-signing.ts` — generic extension signing/finalization helper
+- `chain-signing.ts` — generic extension signing/block-inclusion helper
 
 These services use Svelte 5 runes-style `$state` objects as shared client-side stores.
 
@@ -407,7 +407,7 @@ Publishing always follows the same broad pattern:
 2. build protobuf payload in-browser
 3. add bytes to IPFS through the local Kubo API
 4. sign and submit the chain extrinsic via extension
-5. wait for finalization
+5. wait for block inclusion
 6. rely on the indexer to make the new state discoverable
 
 ### Why publishing requires a reachable local daemon
@@ -636,8 +636,9 @@ Reactions are implemented separately from main content in `src/lib/services/reac
 - uses a Skeleton `Menu` behind a small `+` button for adding new emoji reactions
 - hides emoji the active user has already selected from the add-reaction picker
 - performs optimistic UI updates
+- subscribes to the `(item_id, revision_id)` composite key so all viewers of that revision update live when any account changes reactions
+- keeps optimistic state in place until the indexer subscription delivers the corresponding `ContentReactions::SetReactions` update
 - reverts on error
-- refreshes from the indexer after finalization
 
 Right now reactions are shown under comments via `CommentItem.svelte`.
 
@@ -891,7 +892,7 @@ Here is the full path for creating a forum post:
 8. `saveForumPost()` derives an item ID from account + nonce + namespace.
 9. It submits `content.publishItem(nonce, [], flags, [categoryId], [], revisionHash)`.
 10. The extension signs the extrinsic.
-11. The app waits for finalization.
+11. The app waits for block inclusion.
 12. The user is redirected to `/{itemId}`.
 13. The viewer route queries the indexer for revision events.
 14. The viewer fetches the IPFS payload via the local Kubo API.

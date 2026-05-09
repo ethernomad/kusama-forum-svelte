@@ -3,8 +3,13 @@
 	import { injectedAccounts } from '$lib/services/accounts.svelte';
 	import { connections } from '$lib/services/connections.svelte';
 	import {
+		getSubscriptionDecodedEvent,
+		subscribeIndexerEvents
+	} from '$lib/services/indexer.svelte';
+	import {
 		AVAILABLE_EMOJI_CODEPOINTS,
 		fetchReactions,
+		itemRevisionIndexerKey,
 		optimisticReactionUpdate,
 		setReactions,
 		type ReactionSummary
@@ -66,6 +71,21 @@
 		void refresh();
 	});
 
+	$effect(() => {
+		const unsubscribe = subscribeIndexerEvents(itemRevisionIndexerKey(itemIdHex, revisionId), (message) => {
+			const decoded = getSubscriptionDecodedEvent(message);
+			if (
+				decoded?.event.palletName === 'ContentReactions' &&
+				decoded.event.eventName === 'SetReactions'
+			) {
+				void refresh().finally(() => {
+					saving = false;
+				});
+			}
+		});
+		return unsubscribe;
+	});
+
 	async function toggleReaction(codepoint: number) {
 		if (!connections.api || !injectedAccounts.activeAccount || saving) return;
 		const currentSet = activeSet();
@@ -85,7 +105,6 @@
 				revisionId,
 				reactions: nextSet
 			});
-			await refresh();
 		} catch (value) {
 			summaries = previous;
 			error = value instanceof Error ? value.message : String(value);

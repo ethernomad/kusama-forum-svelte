@@ -4,7 +4,7 @@ export type SignableExtrinsic = {
 	signAndSend: Function;
 };
 
-export async function signAndFinalize(
+export async function signAndWaitForInBlock(
 	extrinsic: SignableExtrinsic,
 	account: InjectedAccount,
 	errorMessage = 'Transaction failed on chain.'
@@ -20,13 +20,13 @@ export async function signAndFinalize(
 			.signAndSend(
 				account.address,
 				{ signer: injector.signer },
-				(result: { status: { isFinalized?: boolean }; dispatchError?: unknown }) => {
+				(result: { status: { isInBlock?: boolean }; dispatchError?: unknown }) => {
 					if (result.dispatchError) {
 						unsubscribe?.();
 						reject(new Error(errorMessage));
 						return;
 					}
-					if (result.status?.isFinalized) {
+					if (result.status?.isInBlock) {
 						unsubscribe?.();
 						resolve();
 					}

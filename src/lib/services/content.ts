@@ -3,7 +3,7 @@ import protobuf from 'protobufjs/minimal';
 import { cryptoWaitReady, decodeAddress } from '@polkadot/util-crypto';
 
 import type { InjectedAccount } from './accounts.svelte';
-import { signAndFinalize, type SignableExtrinsic } from './chain-signing';
+import { signAndWaitForInBlock, type SignableExtrinsic } from './chain-signing';
 import { buildImagePayload, decodeImageMixin, previewDataUrlForImageMixin } from './content-images';
 import { getIndexedEvents } from './indexer.svelte';
 import { digestHexToCid, fetchIpfsDigestBytes, uploadIpfsDigest } from './ipfs';
@@ -812,7 +812,7 @@ async function publishDerivedItemAndFinalize(params: {
 			: (
 					api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
 				).utility.batchAll([publishItem, ...additionalCalls]);
-	await signAndFinalize(extrinsic as SignableExtrinsic, account);
+	await signAndWaitForInBlock(extrinsic as SignableExtrinsic, account);
 	return { itemIdBytes };
 }
 
@@ -1044,7 +1044,7 @@ export async function publishContentRevision(params: {
 		[],
 		resolved.revisionIpfsHashBytes
 	);
-	await signAndFinalize(publishRevision as SignableExtrinsic, account);
+	await signAndWaitForInBlock(publishRevision as SignableExtrinsic, account);
 	return { itemIdHex: content.itemIdHex, revisionIpfsHashHex: resolved.revisionIpfsHashHex };
 }
 
@@ -1056,7 +1056,7 @@ export async function retractItem(
 	const extrinsic = (
 		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
 	).content.retractItem(hexToBytes(itemIdHex));
-	await signAndFinalize(extrinsic as SignableExtrinsic, account);
+	await signAndWaitForInBlock(extrinsic as SignableExtrinsic, account);
 }
 
 function isValidForumCategory(

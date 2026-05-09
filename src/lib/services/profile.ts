@@ -7,7 +7,7 @@ type ProtoReader = InstanceType<typeof Reader>;
 type ProtoWriter = InstanceType<typeof Writer>;
 
 import type { InjectedAccount } from './accounts.svelte';
-import { signAndFinalize, type SignableExtrinsic } from './chain-signing';
+import { signAndWaitForInBlock, type SignableExtrinsic } from './chain-signing';
 import { buildImagePayload, previewDataUrlForImageMixin } from './content-images';
 import { getIndexedEvents } from './indexer.svelte';
 import { digestHexToCid, fetchIpfsDigestBytes, uploadIpfsDigest } from './ipfs';
@@ -556,7 +556,7 @@ export async function saveProfile(params: {
 		const extrinsic = (
 			api.tx as Record<string, Record<string, (...args: unknown[]) => { signAndSend: Function }>>
 		).content.publishRevision(itemIdBytes, [], [], revisionIpfsHashBytes);
-		await signAndFinalize(extrinsic as SignableExtrinsic, account);
+		await signAndWaitForInBlock(extrinsic as SignableExtrinsic, account);
 		return {
 			exists: true,
 			itemIdHex: existingItemIdHex,
@@ -582,7 +582,7 @@ export async function saveProfile(params: {
 	const batch = (
 		api.tx as Record<string, Record<string, (...calls: unknown[]) => { signAndSend: Function }>>
 	).utility.batchAll([publishItem, setProfile]);
-	await signAndFinalize(batch as SignableExtrinsic, account);
+	await signAndWaitForInBlock(batch as SignableExtrinsic, account);
 
 	return {
 		exists: true,
