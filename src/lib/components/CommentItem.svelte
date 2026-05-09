@@ -7,10 +7,14 @@
 		itemIdIndexerKey,
 		subscribeIndexerEvents
 	} from '$lib/services/indexer.svelte';
-	import { shortHex, type ForumComment } from '$lib/services/content';
+	import { type ForumComment } from '$lib/services/content';
 
 	let { comment, onChanged }: { comment: ForumComment; onChanged: () => void | Promise<void> } =
 		$props();
+
+	const commentTimestamp = $derived(
+		comment.createdAtMs == null ? '—' : new Date(comment.createdAtMs).toLocaleString()
+	);
 
 	function handleIndexerMessage(
 		message: Parameters<Parameters<typeof subscribeIndexerEvents>[1]>[0]
@@ -30,8 +34,7 @@
 
 <article class="rounded-lg border border-surface-200-800 bg-surface-100-900 p-4">
 	<div class="flex flex-wrap items-center justify-between gap-2 text-xs text-surface-700-300">
-		<span>Comment {shortHex(comment.itemIdHex)}</span>
-		<span>Block {comment.publishBlockNumber || '—'}</span>
+		<span>{commentTimestamp}</span>
 	</div>
 	<div class="mt-3 text-sm whitespace-pre-wrap">{comment.bodyText}</div>
 	{#if comment.latestRevisionId != null || comment.revisionId != null}

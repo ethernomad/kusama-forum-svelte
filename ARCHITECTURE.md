@@ -564,6 +564,8 @@ So category membership is inferred through indexed link relationships, not direc
 - keep only valid comments
 - recurse for each comment to build nested replies
 
+Comment cards render the comment timestamp in the browser's local timezone instead of showing chain/block metadata in the header.
+
 This makes the comment system a true item tree reconstructed from indexed publish events.
 
 ---
