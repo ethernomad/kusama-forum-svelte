@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import {
 		accountAddressToHex,
 		loadForumCategoriesIncremental,
@@ -8,7 +10,6 @@
 		type LoadedContent
 	} from '$lib/services/content';
 	import { injectedAccounts } from '$lib/services/accounts.svelte';
-	import { resolve } from '$app/paths';
 	import { connections } from '$lib/services/connections.svelte';
 	import { PUBLISH_NOTICE_PREPARING } from '$lib/services/publish-notices';
 
@@ -68,15 +69,14 @@
 		categorySaving = true;
 		try {
 			categoryNotice = PUBLISH_NOTICE_PREPARING;
-			await saveCategory({
+			const category = await saveCategory({
 				api: connections.api,
 				account: injectedAccounts.activeAccount,
 				forumItemIdHex: forum.itemIdHex,
 				draft: categoryDraft
 			});
 			categoryDraft = { title: '', body: '' };
-			categoryNotice = 'Category published.';
-			await refreshCategories();
+			await goto(resolve(`/item_id/${encodeURIComponent(category.itemIdHex)}`));
 		} catch (value) {
 			categoryError = value instanceof Error ? value.message : String(value);
 		} finally {
@@ -104,11 +104,9 @@
 <div class="mt-8 border-t border-surface-200-800 pt-6">
 	<div class="flex items-center justify-between gap-3">
 		<h3 class="text-xl font-semibold">Categories</h3>
-		<p class="text-sm text-surface-700-300">
-			{categories.length} valid categor{categories.length === 1 ? 'y' : 'ies'}{categoryLoading
-				? ' loading…'
-				: ''}
-		</p>
+		{#if categoryLoading}
+			<p class="text-sm text-surface-700-300">Loading categories…</p>
+		{/if}
 	</div>
 
 	{#if categoryError}
@@ -119,6 +117,39 @@
 			{categoryNotice}
 		</div>
 	{/if}
+
+	<div class="mt-4 space-y-3">
+		{#each categories as category (category.itemIdHex)}
+			<article class="card p-4">
+				<div class="flex items-start justify-between gap-3">
+					<div>
+						<a
+							class="text-lg font-semibold hover:underline"
+							href={resolve(`/item_id/${encodeURIComponent(category.itemIdHex)}`)}
+							>{category.title || 'Untitled category'}</a
+						>
+						{#if category.bodyText}
+							<p class="mt-2 text-sm whitespace-pre-wrap text-surface-700-300">{category.bodyText}</p>
+						{/if}
+					</div>
+					{#if isForumOwner}
+						<button
+							class="variant-outline btn"
+							type="button"
+							disabled={categorySaving}
+							onclick={() => void removeCategory(category)}
+						>
+							Remove
+						</button>
+					{/if}
+				</div>
+			</article>
+		{:else}
+			<p class="text-surface-700-300 text-sm">
+				{categoryLoading ? 'Loading categories…' : 'No valid categories found.'}
+			</p>
+		{/each}
+	</div>
 
 	{#if isForumOwner}
 		<form
@@ -146,42 +177,9 @@
 				class="variant-filled btn"
 				type="submit"
 				disabled={categorySaving || !connections.ipfsConnected || !categoryDraft.title.trim()}
-				>{categorySaving ? 'Publishing…' : 'Publish category'}</button
 			>
+				{categorySaving ? 'Publishing…' : 'Publish category'}
+			</button>
 		</form>
 	{/if}
-
-	<div class="mt-4 space-y-3">
-		{#each categories as category (category.itemIdHex)}
-			<article class="card p-4">
-				<div class="flex items-start justify-between gap-3">
-					<div>
-						<a
-							class="text-lg font-semibold hover:underline"
-							href={resolve(`/item_id/${encodeURIComponent(category.itemIdHex)}`)}
-							>{category.title || 'Untitled category'}</a
-						>
-						{#if category.bodyText}<p class="mt-2 text-sm whitespace-pre-wrap text-surface-700-300">
-								{category.bodyText}
-							</p>{/if}
-						<code class="mt-2 block text-xs break-all text-surface-700-300"
-							>{category.itemIdHex}</code
-						>
-					</div>
-					{#if isForumOwner}
-						<button
-							class="variant-outline btn"
-							type="button"
-							disabled={categorySaving}
-							onclick={() => void removeCategory(category)}>Remove</button
-						>
-					{/if}
-				</div>
-			</article>
-		{:else}
-			<p class="text-surface-700-300 text-sm">
-				{categoryLoading ? 'Loading categories…' : 'No valid categories found.'}
-			</p>
-		{/each}
-	</div>
 </div>

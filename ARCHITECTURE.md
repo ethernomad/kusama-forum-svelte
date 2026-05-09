@@ -661,6 +661,7 @@ The generic item viewer renders specialized sub-components depending on decoded 
 `ForumCategories.svelte`:
 
 - incrementally loads categories from indexed parent-child relationships
+- renders the category list above the add-category form for easier scanning
 - lets the forum owner create new categories
 - lets the owner retract categories
 
