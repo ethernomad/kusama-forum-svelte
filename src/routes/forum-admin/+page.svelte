@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { formatShortAddress, injectedAccounts } from '$lib/services/accounts.svelte';
+	import { injectedAccounts } from '$lib/services/accounts.svelte';
 	import { connections } from '$lib/services/connections.svelte';
 	import { bytesToHex, loadContentByItemId, type LoadedContent } from '$lib/services/content';
 
@@ -95,13 +95,6 @@
 			Select an account to view your forums.
 		</div>
 	{:else}
-		<section class="card p-4 text-sm">
-			<p class="font-medium">Active account</p>
-			<p class="mt-1 text-surface-700-300">
-				{formatShortAddress(activeAccount.address)}
-			</p>
-		</section>
-
 		{#if error}
 			<div class="card border-red-500/40 px-4 py-3 text-sm text-red-200">{error}</div>
 		{:else if loading}

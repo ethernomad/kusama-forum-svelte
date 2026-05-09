@@ -74,7 +74,7 @@ Important routes:
 - `src/routes/+layout.svelte` — bootstraps global connections/watchers and renders the sidebar
 - `src/routes/+page.svelte` — home page, currently the profile page
 - `src/routes/my-profile/+page.svelte` — profile editor/view
-- `src/routes/forum-admin/+page.svelte` — list the active user's forums from `pallet-account-content` and link to forum creation
+- `src/routes/forum-admin/+page.svelte` — list forums from `pallet-account-content` and link to forum creation
 - `src/routes/create-forum/+page.svelte` — create a top-level forum item
 - `src/routes/item_id/+page.svelte` — item lookup form
 - `src/routes/item_id/[item_id]/+page.svelte` — generic content viewer for any item
