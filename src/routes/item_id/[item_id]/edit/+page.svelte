@@ -35,7 +35,7 @@
 
 	$effect(() => {
 		void itemId;
-		const heliaNode = connections.heliaNode;
+		const heliaNode = connections.ipfsConnected;
 		if (!heliaNode || !itemId) return;
 
 		const requestId = ++loadRequest;
@@ -45,7 +45,7 @@
 		selectedImageFile = null;
 		selectedImagePreview = null;
 		removeImage = false;
-		void loadContentByItemId(heliaNode, itemId, connections.api)
+		void loadContentByItemId(itemId, connections.api)
 			.then((value) => {
 				if (requestId !== loadRequest) return;
 				content = value;
@@ -75,7 +75,9 @@
 		const input = event.currentTarget as HTMLInputElement;
 		const file = input.files?.[0] ?? null;
 		selectedImageFile = file;
-		selectedImagePreview = file ? await fileToDataUrl(file) : content?.imagePreviewDataUrl ?? null;
+		selectedImagePreview = file
+			? await fileToDataUrl(file)
+			: (content?.imagePreviewDataUrl ?? null);
 		removeImage = false;
 	}
 
@@ -92,12 +94,8 @@
 			error = 'The active account cannot edit this content item.';
 			return;
 		}
-		if (!connections.api || !connections.heliaNode) {
-			error = 'Connect to the chain and start Helia before publishing.';
-			return;
-		}
-		if (!connections.ipfsHasRequiredLocalConnection) {
-			error = 'Publishing requires a connection to the local IPFS pinner on one of the default local swarm addresses.';
+		if (!connections.api || !connections.ipfsConnected) {
+			error = 'Connect to the chain and local IPFS daemon before publishing.';
 			return;
 		}
 		if (!draft.title.trim()) {
@@ -110,7 +108,6 @@
 			notice = PUBLISH_NOTICE_PREPARING;
 			await publishContentRevision({
 				api: connections.api,
-				heliaNode: connections.heliaNode,
 				account: activeAccount,
 				content,
 				draft,
@@ -128,9 +125,7 @@
 </script>
 
 <div class="max-w-4xl space-y-6">
-	<header
-		class="card border-dashed p-6"
-	>
+	<header class="card border-dashed p-6">
 		<div>
 			<p class="text-sm font-medium text-surface-700-300">Content editor</p>
 			<h1 class="mt-1 text-2xl font-semibold">Edit content</h1>
@@ -147,21 +142,15 @@
 			{error}
 		</div>
 	{:else if notice}
-		<div
-			class="card border-emerald-500/40 px-4 py-3 text-sm text-emerald-200"
-		>
+		<div class="card border-emerald-500/40 px-4 py-3 text-sm text-emerald-200">
 			{notice}
 		</div>
 	{/if}
 
 	{#if loading}
-		<div class="card px-4 py-3 text-sm">
-			Loading content…
-		</div>
+		<div class="card px-4 py-3 text-sm">Loading content…</div>
 	{:else if content && !canEdit}
-		<div
-			class="card border-amber-500/40 px-4 py-3 text-sm text-amber-100"
-		>
+		<div class="card border-amber-500/40 px-4 py-3 text-sm text-amber-100">
 			This item is not editable by the active account, or it is not revisionable.
 		</div>
 	{:else if content}
@@ -169,11 +158,7 @@
 			<div class="space-y-4">
 				<label class="block space-y-2 text-sm">
 					<span class="font-medium">Title</span>
-					<input
-						class="input w-full"
-						bind:value={draft.title}
-						disabled={saving}
-					/>
+					<input class="input w-full" bind:value={draft.title} disabled={saving} />
 				</label>
 
 				{#if content.contentType === 'forumPost'}
@@ -188,37 +173,61 @@
 
 				<label class="block space-y-2 text-sm">
 					<span class="font-medium">Body</span>
-					<textarea
-						class="textarea min-h-64 w-full"
-						bind:value={draft.body}
-						disabled={saving}
+					<textarea class="textarea min-h-64 w-full" bind:value={draft.body} disabled={saving}
 					></textarea>
 				</label>
 
 				<label class="block space-y-2 text-sm">
 					<span class="font-medium">Image</span>
-					<input class="input w-full text-sm" type="file" accept="image/*" onchange={handleImageChange} disabled={saving} />
-					<p class="text-surface-700-300 text-xs">Leave empty to keep the current image, choose a file to replace it, or remove it entirely.</p>
+					<input
+						class="input w-full text-sm"
+						type="file"
+						accept="image/*"
+						onchange={handleImageChange}
+						disabled={saving}
+					/>
+					<p class="text-xs text-surface-700-300">
+						Leave empty to keep the current image, choose a file to replace it, or remove it
+						entirely.
+					</p>
 				</label>
 
-				<div class="card space-y-4 p-4">
+				<div class="space-y-4 card p-4">
 					<p class="text-sm font-medium">Image preview</p>
 					{#if !removeImage && selectedImagePreview}
-						<img src={selectedImagePreview} alt={draft.title || 'Content image preview'} class="max-h-80 rounded-xl object-cover" />
+						<img
+							src={selectedImagePreview}
+							alt={draft.title || 'Content image preview'}
+							class="max-h-80 rounded-xl object-cover"
+						/>
 					{:else}
-						<div class="bg-surface-100-900 text-surface-700-300 flex aspect-video w-full items-center justify-center rounded-xl text-sm">
+						<div
+							class="flex aspect-video w-full items-center justify-center rounded-xl bg-surface-100-900 text-sm text-surface-700-300"
+						>
 							No image
 						</div>
 					{/if}
 					<div class="flex flex-wrap gap-3">
-						<button class="btn variant-outline" type="button" onclick={clearSelectedImage} disabled={saving || (removeImage || (!selectedImageFile && !content.imagePreviewDataUrl))}>
+						<button
+							class="variant-outline btn"
+							type="button"
+							onclick={clearSelectedImage}
+							disabled={saving ||
+								removeImage ||
+								(!selectedImageFile && !content.imagePreviewDataUrl)}
+						>
 							Remove image
 						</button>
-						<button class="btn variant-outline" type="button" onclick={() => {
-							selectedImageFile = null;
-							selectedImagePreview = content.imagePreviewDataUrl;
-							removeImage = false;
-						}} disabled={saving || (!selectedImageFile && !removeImage)}>
+						<button
+							class="variant-outline btn"
+							type="button"
+							onclick={() => {
+								selectedImageFile = null;
+								selectedImagePreview = content?.imagePreviewDataUrl ?? null;
+								removeImage = false;
+							}}
+							disabled={saving || (!selectedImageFile && !removeImage)}
+						>
 							Reset image changes
 						</button>
 					</div>
@@ -228,7 +237,7 @@
 					<button
 						class="variant-filled-primary btn"
 						onclick={submitRevision}
-						disabled={!activeAccount || !connections.api || !connections.heliaNode || !connections.ipfsHasRequiredLocalConnection || saving}
+						disabled={!activeAccount || !connections.api || !connections.ipfsConnected || saving}
 					>
 						{saving ? 'Publishing...' : 'Publish new revision'}
 					</button>
@@ -237,9 +246,9 @@
 				<p class="text-xs text-surface-700-300">
 					Author: {activeAccount
 						? formatShortAddress(activeAccount.address)
-						: 'No account selected'} · {connections.ipfsHasRequiredLocalConnection
-						? 'Ready to publish through the local IPFS pinner.'
-						: 'Connect to the local IPFS pinner before publishing.'}
+						: 'No account selected'} · {connections.ipfsConnected
+						? 'Ready to publish through the local IPFS daemon.'
+						: 'Connect to the local IPFS daemon before publishing.'}
 				</p>
 			</div>
 		</section>

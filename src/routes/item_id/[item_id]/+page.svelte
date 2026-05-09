@@ -15,7 +15,11 @@
 		type LoadedContent
 	} from '$lib/services/content';
 	import { connections } from '$lib/services/connections.svelte';
-	import { getSubscriptionDecodedEvent, itemIdIndexerKey, subscribeIndexerEvents } from '$lib/services/indexer.svelte';
+	import {
+		getSubscriptionDecodedEvent,
+		itemIdIndexerKey,
+		subscribeIndexerEvents
+	} from '$lib/services/indexer.svelte';
 
 	let loading = $state(false);
 	let error = $state('');
@@ -32,7 +36,7 @@
 	$effect(() => {
 		void itemId;
 		void refreshNonce;
-		const heliaNode = connections.heliaNode;
+		const heliaNode = connections.ipfsConnected;
 		if (!heliaNode || !itemId) return;
 
 		const currentRequestId = ++requestId;
@@ -40,7 +44,7 @@
 		error = '';
 		content = null;
 		const revisionId = selectedRevisionId === '' ? null : Number(selectedRevisionId);
-		void loadContentByItemId(heliaNode, itemId, connections.api, revisionId)
+		void loadContentByItemId(itemId, connections.api, revisionId)
 			.then(async (value) => {
 				if (currentRequestId !== requestId) return;
 				content = value;
@@ -79,7 +83,9 @@
 			const decoded = getSubscriptionDecodedEvent(message);
 			if (decoded?.event.palletName !== 'Content') return;
 			if (decoded.event.eventName === 'PublishRevision') {
-				const viewingLatest = selectedRevisionId === '' || selectedRevisionId === String(content?.latestRevisionId ?? '');
+				const viewingLatest =
+					selectedRevisionId === '' ||
+					selectedRevisionId === String(content?.latestRevisionId ?? '');
 				if (viewingLatest) selectedRevisionId = '';
 				refreshNonce += 1;
 			} else if (decoded.event.eventName === 'PublishItem') {
@@ -112,9 +118,7 @@
 </script>
 
 <div class="max-w-4xl space-y-6">
-	<header
-		class="card flex flex-wrap items-start justify-between gap-4 border-dashed p-6"
-	>
+	<header class="flex flex-wrap items-start justify-between gap-4 card border-dashed p-6">
 		<div>
 			<p class="text-sm font-medium text-surface-700-300">Content viewer</p>
 			<h1 class="mt-1 text-2xl font-semibold">{contentTypeLabel(content)}</h1>
@@ -143,9 +147,7 @@
 	{/if}
 
 	{#if loading}
-		<div class="card px-4 py-3 text-sm">
-			Loading content…
-		</div>
+		<div class="card px-4 py-3 text-sm">Loading content…</div>
 	{:else if error}
 		<div class="card border-red-500/40 px-4 py-3 text-sm text-red-200">
 			{error}

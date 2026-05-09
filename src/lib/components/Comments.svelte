@@ -3,7 +3,11 @@
 	import CommentItem from '$lib/components/CommentItem.svelte';
 	import { connections } from '$lib/services/connections.svelte';
 	import { loadCommentTree, type ForumComment, type LoadedContent } from '$lib/services/content';
-	import { getSubscriptionDecodedEvent, itemIdIndexerKey, subscribeIndexerEvents } from '$lib/services/indexer.svelte';
+	import {
+		getSubscriptionDecodedEvent,
+		itemIdIndexerKey,
+		subscribeIndexerEvents
+	} from '$lib/services/indexer.svelte';
 
 	let { item, refreshNonce = 0 }: { item: LoadedContent; refreshNonce?: number } = $props();
 
@@ -15,7 +19,7 @@
 	$effect(() => {
 		void item.itemIdHex;
 		void refreshNonce;
-		if (!connections.heliaNode) return;
+		if (!connections.ipfsConnected) return;
 		void refresh();
 	});
 
@@ -31,19 +35,19 @@
 	});
 
 	async function refresh() {
-		if (!connections.heliaNode) return;
+		if (!connections.ipfsConnected) return;
 		const currentRequestId = ++requestId;
 		loading = true;
 		error = '';
 		try {
 			const next = await loadCommentTree({
-				heliaNode: connections.heliaNode,
 				api: connections.api,
 				parentItemIdHex: item.itemIdHex
 			});
 			if (currentRequestId === requestId) comments = next;
 		} catch (value) {
-			if (currentRequestId === requestId) error = value instanceof Error ? value.message : String(value);
+			if (currentRequestId === requestId)
+				error = value instanceof Error ? value.message : String(value);
 		} finally {
 			if (currentRequestId === requestId) loading = false;
 		}
@@ -53,20 +57,30 @@
 <section class="mt-8 border-t border-surface-200-800 pt-6">
 	<div class="flex items-center justify-between gap-3">
 		<h3 class="text-xl font-semibold">Comments</h3>
-		<p class="text-sm text-surface-700-300">{comments.length} top-level comment{comments.length === 1 ? '' : 's'}{loading ? ' loading…' : ''}</p>
+		<p class="text-sm text-surface-700-300">
+			{comments.length} top-level comment{comments.length === 1 ? '' : 's'}{loading
+				? ' loading…'
+				: ''}
+		</p>
 	</div>
 
 	<CommentForm parentItemIdHex={item.itemIdHex} onPublished={refresh} />
 
 	{#if error}
-		<div class="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</div>
+		<div
+			class="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200"
+		>
+			{error}
+		</div>
 	{/if}
 
 	<div class="mt-4 space-y-3">
 		{#each comments as comment (comment.itemIdHex)}
 			<CommentItem {comment} onChanged={refresh} />
 		{:else}
-			<p class="text-sm text-surface-700-300">{loading ? 'Loading comments…' : 'No comments yet.'}</p>
+			<p class="text-sm text-surface-700-300">
+				{loading ? 'Loading comments…' : 'No comments yet.'}
+			</p>
 		{/each}
 	</div>
 </section>

@@ -1,29 +1,6 @@
-import { noise } from '@chainsafe/libp2p-noise';
-import { yamux } from '@chainsafe/libp2p-yamux';
-import { bootstrap } from '@libp2p/bootstrap';
-import { circuitRelayTransport } from '@libp2p/circuit-relay-v2';
-import { identify } from '@libp2p/identify';
-import { kadDHT } from '@libp2p/kad-dht';
-import { ping } from '@libp2p/ping';
-import { webRTC } from '@libp2p/webrtc';
-import { webSockets } from '@libp2p/websockets';
-import { webTransport } from '@libp2p/webtransport';
-import { multiaddr } from '@multiformats/multiaddr';
 import { ApiPromise, WsProvider } from '@polkadot/api';
-import { createHelia, type Helia } from 'helia';
-import { createLibp2p } from 'libp2p';
 
-import {
-	DEFAULT_LOCAL_IPFS_MULTIADDRS,
-	hasDefaultLocalIpfsConnection
-} from './ipfs-local';
-import { flushPendingCidAcks } from './ipfs-pinning-queue.svelte';
-import { provideAndAckCid } from './ipfs-publish';
-
-type GlobalHeliaState = typeof globalThis & {
-	__kusamaForumHeliaNode?: Helia | null;
-	__kusamaForumHeliaNodePromise?: Promise<Helia> | null;
-};
+import { ipfsApiUrl, ipfsDaemonId, type IpfsDaemonInfo } from './ipfs';
 import {
 	configureIndexerConnectionState,
 	ensureStarted as startIndexer,
@@ -34,35 +11,7 @@ import {
 
 const ENDPOINT = 'ws://127.0.0.1:9944';
 const INDEXER_ENDPOINT = 'ws://127.0.0.1:8172';
-const LOCAL_IPFS_RECONNECT_INTERVAL_MS = 30_000;
 const IPFS_STATUS_INTERVAL_MS = 5_000;
-const DEFAULT_GLOBAL_IPFS_BOOTSTRAP_MULTIADDRS = [
-	'/dns/am6.bootstrap.libp2p.io/tcp/443/wss/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb',
-	'/dns/ny5.bootstrap.libp2p.io/tcp/443/wss/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa',
-	'/dns/sg1.bootstrap.libp2p.io/tcp/443/wss/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt',
-	'/dns/sv15.bootstrap.libp2p.io/tcp/443/wss/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN'
-] as const;
-function configuredGlobalBootstrapMultiaddrs(): string[] {
-	const configured = import.meta.env.VITE_IPFS_BOOTSTRAP_ADDRS?.split(',')
-		.map((value: string) => value.trim())
-		.filter(Boolean);
-	return configured?.length ? configured : [...DEFAULT_GLOBAL_IPFS_BOOTSTRAP_MULTIADDRS];
-}
-
-function configuredLocalBootstrapMultiaddrs(): string[] {
-	const configured = import.meta.env.VITE_LOCAL_IPFS_BOOTSTRAP_ADDRS?.split(',')
-		.map((value: string) => value.trim())
-		.filter(Boolean);
-	return configured?.length ? configured : [...DEFAULT_LOCAL_IPFS_MULTIADDRS];
-}
-
-function configuredBootstrapMultiaddrs(): string[] {
-	return [...new Set([...configuredGlobalBootstrapMultiaddrs(), ...configuredLocalBootstrapMultiaddrs()])];
-}
-
-function isDialableMultiaddr(value: string): boolean {
-	return value.includes('/p2p/');
-}
 
 type ConnectionsState = {
 	endpoint: string;
@@ -80,14 +29,15 @@ type ConnectionsState = {
 	indexerSubscriptionId: string;
 	indexerLastUpdate: string;
 	ipfsStatus: string;
+	ipfsApiUrl: string;
 	ipfsPeerId: string;
-	ipfsMultiaddrs: string[];
-	ipfsSwarmAddresses: string[];
-	ipfsConnectedAddresses: string[];
-	ipfsLastLocalDialError: string;
-	ipfsConnections: number;
-	ipfsHasRequiredLocalConnection: boolean;
-	heliaNode: Helia | null;
+	ipfsAddresses: string[];
+	ipfsProtocols: string[];
+	ipfsAgentVersion: string;
+	ipfsProtocolVersion: string;
+	ipfsPublicKey: string;
+	ipfsLastError: string;
+	ipfsConnected: boolean;
 };
 
 export const connections = $state<ConnectionsState>({
@@ -105,62 +55,20 @@ export const connections = $state<ConnectionsState>({
 	indexerLatestBlockNumber: '',
 	indexerSubscriptionId: '',
 	indexerLastUpdate: '',
-	ipfsStatus: 'Starting browser IPFS node...',
+	ipfsStatus: 'Connecting to local IPFS daemon...',
+	ipfsApiUrl: ipfsApiUrl(),
 	ipfsPeerId: '',
-	ipfsMultiaddrs: [],
-	ipfsSwarmAddresses: [...DEFAULT_LOCAL_IPFS_MULTIADDRS],
-	ipfsConnectedAddresses: [],
-	ipfsLastLocalDialError: '',
-	ipfsConnections: 0,
-	ipfsHasRequiredLocalConnection: false,
-	heliaNode: null
+	ipfsAddresses: [],
+	ipfsProtocols: [],
+	ipfsAgentVersion: '',
+	ipfsProtocolVersion: '',
+	ipfsPublicKey: '',
+	ipfsLastError: '',
+	ipfsConnected: false
 });
 
 let started = false;
 let stopConnections: (() => void) | null = null;
-
-async function getOrCreateHeliaNode(): Promise<Helia> {
-	const globalState = globalThis as GlobalHeliaState;
-	if (globalState.__kusamaForumHeliaNode) return globalState.__kusamaForumHeliaNode;
-	if (globalState.__kusamaForumHeliaNodePromise) return await globalState.__kusamaForumHeliaNodePromise;
-
-	globalState.__kusamaForumHeliaNodePromise = (async () => {
-		const libp2p = await createLibp2p({
-			addresses: {
-				listen: []
-			},
-			connectionGater: {
-				denyDialMultiaddr: async () => false,
-				filterMultiaddrForPeer: async () => true
-			},
-			transports: [webSockets(), webRTC(), webTransport(), circuitRelayTransport()],
-			connectionEncrypters: [noise()],
-			streamMuxers: [yamux()],
-			peerDiscovery: [
-				bootstrap({
-					list: configuredBootstrapMultiaddrs()
-				})
-			],
-			services: {
-				identify: identify(),
-				ping: ping(),
-				dht: kadDHT({
-					clientMode: true
-				})
-			}
-		});
-
-		const node = await createHelia({ libp2p });
-		globalState.__kusamaForumHeliaNode = node;
-		return node;
-	})();
-
-	try {
-		return await globalState.__kusamaForumHeliaNodePromise;
-	} finally {
-		globalState.__kusamaForumHeliaNodePromise = null;
-	}
-}
 
 const updateIndexerSpans = (spans: IndexSpan[]) => {
 	connections.indexerSpans = spans;
@@ -172,63 +80,22 @@ const updateIndexerSpans = (spans: IndexSpan[]) => {
 	connections.indexerLastUpdate = new Date().toLocaleTimeString();
 };
 
-async function connectHeliaToLocalIpfs(node: Helia): Promise<void> {
-	let lastError: unknown = null;
-
-	for (const target of configuredLocalBootstrapMultiaddrs().filter(isDialableMultiaddr)) {
-		const alreadyConnected = node.libp2p
-			.getConnections()
-			.some((connection) => connection.remoteAddr?.toString?.() === target || connection.remoteAddr?.toString?.().includes(target.split('/p2p/')[1] ?? ''));
-		if (alreadyConnected) {
-			connections.ipfsLastLocalDialError = '';
-			return;
-		}
-
-		try {
-			await node.libp2p.dial(multiaddr(target));
-			connections.ipfsLastLocalDialError = '';
-			void flushPendingCidAcks(node, provideAndAckCid);
-			return;
-		} catch (error) {
-			lastError = error;
-			connections.ipfsLastLocalDialError = error instanceof Error ? error.message : String(error);
-		}
-	}
-
-	if (lastError != null) {
-		console.warn('Background local IPFS reconnect failed', lastError);
-	}
+function applyIpfsInfo(info: IpfsDaemonInfo): void {
+	connections.ipfsConnected = true;
+	connections.ipfsPeerId = info.peerId;
+	connections.ipfsAddresses = [...info.addresses];
+	connections.ipfsProtocols = [...info.protocols];
+	connections.ipfsAgentVersion = info.agentVersion ?? '';
+	connections.ipfsProtocolVersion = info.protocolVersion ?? '';
+	connections.ipfsPublicKey = info.publicKey ?? '';
+	connections.ipfsLastError = '';
+	connections.ipfsStatus = 'Connected';
 }
 
-function updateIpfsStatus(node: Helia): void {
-	const allConnections = node.libp2p.getConnections();
-	const connectionCount = allConnections.length;
-	const localBootstrapMultiaddrs = configuredLocalBootstrapMultiaddrs();
-	const localPeerIds = localBootstrapMultiaddrs.map((addr) => addr.split('/p2p/')[1] ?? '').filter(Boolean);
-	const localConnected = allConnections.some((connection) => localPeerIds.includes(connection.remotePeer?.toString() ?? ''));
-	const hasRequiredLocalConnection = hasDefaultLocalIpfsConnection(node);
-	const connectedAddresses = new Set(allConnections.map((connection) => connection.remoteAddr?.toString?.() ?? '').filter(Boolean));
-
-	for (const connection of allConnections) {
-		const remotePeerId = connection.remotePeer?.toString() ?? '';
-		if (!remotePeerId) continue;
-
-		for (const target of localBootstrapMultiaddrs) {
-			if (target.includes(`/p2p/${remotePeerId}`)) {
-				connectedAddresses.add(target);
-			}
-		}
-	}
-
-	connections.ipfsConnections = connectionCount;
-	connections.ipfsHasRequiredLocalConnection = hasRequiredLocalConnection;
-	connections.ipfsMultiaddrs = node.libp2p.getMultiaddrs().map((addr: { toString(): string }) => addr.toString());
-	connections.ipfsSwarmAddresses = [...DEFAULT_LOCAL_IPFS_MULTIADDRS];
-	connections.ipfsConnectedAddresses = [...connectedAddresses].sort();
-	connections.ipfsStatus =
-		connectionCount > 0
-			? `Connected to global IPFS (${connectionCount} peer${connectionCount === 1 ? '' : 's'}${localConnected ? ', local node linked' : ', local node reconnecting'})`
-			: `Running in browser (discovering global IPFS peers${localConnected ? ', local node linked' : ', local node reconnecting'}...)`;
+function applyIpfsError(error: unknown): void {
+	connections.ipfsConnected = false;
+	connections.ipfsLastError = error instanceof Error ? error.message : String(error);
+	connections.ipfsStatus = `Connection failed: ${connections.ipfsLastError}`;
 }
 
 export function startAppConnections() {
@@ -239,8 +106,7 @@ export function startAppConnections() {
 	let unsubscribeNewHeads: (() => void) | undefined;
 	let connectedApi: ApiPromise | null = null;
 	let unsubscribeIndexerStatus: (() => void) | undefined;
-	let ipfsConnectionInterval: ReturnType<typeof setInterval> | undefined;
-	let localReconnectInterval: ReturnType<typeof setInterval> | undefined;
+	let ipfsInterval: ReturnType<typeof setInterval> | undefined;
 
 	void (async () => {
 		try {
@@ -298,43 +164,27 @@ export function startAppConnections() {
 			});
 	})();
 
-	void (async () => {
+	const refreshIpfs = async () => {
+		if (!active) return;
 		try {
-			const node = await getOrCreateHeliaNode();
-
-			if (!active) {
-				return;
-			}
-
-			connections.heliaNode = node;
-			connections.ipfsPeerId = node.libp2p.peerId.toString();
-			updateIpfsStatus(node);
-			void connectHeliaToLocalIpfs(node);
-			void flushPendingCidAcks(node, provideAndAckCid);
-
-			ipfsConnectionInterval = setInterval(() => {
-				if (!active) return;
-				updateIpfsStatus(node);
-				if (connections.ipfsHasRequiredLocalConnection) {
-					void flushPendingCidAcks(node, provideAndAckCid);
-				}
-			}, IPFS_STATUS_INTERVAL_MS);
-			localReconnectInterval = setInterval(() => {
-				if (!active) return;
-				void connectHeliaToLocalIpfs(node);
-			}, LOCAL_IPFS_RECONNECT_INTERVAL_MS);
+			applyIpfsInfo(await ipfsDaemonId());
 		} catch (error) {
-			connections.ipfsStatus = `IPFS start failed: ${error instanceof Error ? error.message : String(error)}`;
+			if (!active) return;
+			applyIpfsError(error);
 		}
-	})();
+	};
+
+	void refreshIpfs();
+	ipfsInterval = setInterval(() => {
+		void refreshIpfs();
+	}, IPFS_STATUS_INTERVAL_MS);
 
 	stopConnections = () => {
 		active = false;
 		unsubscribeNewHeads?.();
 		unsubscribeIndexerStatus?.();
 		configureIndexerConnectionState(null);
-		if (ipfsConnectionInterval) clearInterval(ipfsConnectionInterval);
-		if (localReconnectInterval) clearInterval(localReconnectInterval);
+		if (ipfsInterval) clearInterval(ipfsInterval);
 		void connectedApi?.disconnect();
 		started = false;
 		stopConnections = null;

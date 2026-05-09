@@ -1,8 +1,4 @@
 import type { ApiPromise } from '@polkadot/api';
-import type { Helia } from 'helia';
-import { unixfs } from '@helia/unixfs';
-import { CID } from 'multiformats/cid';
-import { create as createDigest, decode as decodeDigest } from 'multiformats/hashes/digest';
 import protobuf from 'protobufjs/minimal';
 import { cryptoWaitReady, decodeAddress } from '@polkadot/util-crypto';
 
@@ -10,7 +6,7 @@ import type { InjectedAccount } from './accounts.svelte';
 import { signAndFinalize, type SignableExtrinsic } from './chain-signing';
 import { buildImagePayload, decodeImageMixin, previewDataUrlForImageMixin } from './content-images';
 import { getIndexedEvents } from './indexer.svelte';
-import { publishBytesToIpfs } from './ipfs-publish';
+import { digestHexToCid, fetchIpfsDigestBytes, uploadIpfsDigest } from './ipfs';
 import { resolvePreparedValue } from './prepared-publish';
 
 const { Reader, Writer } = protobuf;
@@ -388,30 +384,10 @@ async function deriveItemId(accountAddress: string, nonce: Uint8Array): Promise<
 	return blake2_256(concatBytes(accountId, nonce, u32Le(ITEM_ID_NAMESPACE)));
 }
 
-function digestHexToCid(hexValue: string): CID {
-	const digest = createDigest(0x12, hexToBytes(hexValue));
-	return CID.createV0(digest);
-}
-
 export function ipfsDigestHexToCid(value: string | null): string {
 	if (!value) return '—';
 	return digestHexToCid(value).toString();
 }
-
-async function fetchIpfsDigestBytes(heliaNode: Helia, ipfsHashHex: string): Promise<Bytes> {
-	const fs = unixfs(heliaNode);
-	const chunks: Uint8Array[] = [];
-	for await (const chunk of fs.cat(digestHexToCid(ipfsHashHex))) {
-		chunks.push(u8a(chunk));
-	}
-	return concatBytes(...chunks);
-}
-
-async function uploadIpfsDigest(heliaNode: Helia, bytes: Uint8Array): Promise<string> {
-	const { cid } = await publishBytesToIpfs(heliaNode, bytes);
-	return toHex(cid.multihash.digest);
-}
-
 
 async function indexerRequest<T>(_method: string, payload: Record<string, unknown>): Promise<T> {
 	return await getIndexedEvents<T>(payload);
@@ -560,11 +536,15 @@ function decodeMixinDebug(mixin: MixinPayload): DecodedMixinDebug {
 	} catch (error) {
 		data = { error: error instanceof Error ? error.message : String(error) };
 	}
-	return { mixinId: mixin.mixinId, name: mixinName(mixin.mixinId), data, rawHex: toHex(mixin.payload) };
+	return {
+		mixinId: mixin.mixinId,
+		name: mixinName(mixin.mixinId),
+		data,
+		rawHex: toHex(mixin.payload)
+	};
 }
 
 export async function loadContentItemDebug(
-	heliaNode: Helia,
 	itemIdHex: string,
 	api: ApiPromise | null = null
 ): Promise<ContentItemDebug> {
@@ -573,13 +553,20 @@ export async function loadContentItemDebug(
 		fetchItemState(api, normalizedItemIdHex),
 		fetchContentRevisions(normalizedItemIdHex),
 		indexerRequest<{ events?: DecodedEvent[] }>('acuity_getEvents', {
-			key: { type: 'Custom', value: { name: 'item_id', kind: 'bytes32', value: normalizedItemIdHex } },
+			key: {
+				type: 'Custom',
+				value: { name: 'item_id', kind: 'bytes32', value: normalizedItemIdHex }
+			},
 			limit: 100
 		})
 	]);
 	const publishItem = (response.events ?? []).find((entry) => {
 		const eventItemId = normalizeItemId(entry.event.fields.item_id ?? entry.event.fields.itemId);
-		return entry.event.palletName === 'Content' && entry.event.eventName === 'PublishItem' && eventItemId?.toLowerCase() === normalizedItemIdHex.toLowerCase();
+		return (
+			entry.event.palletName === 'Content' &&
+			entry.event.eventName === 'PublishItem' &&
+			eventItemId?.toLowerCase() === normalizedItemIdHex.toLowerCase()
+		);
 	});
 	return {
 		itemIdHex: normalizedItemIdHex,
@@ -591,8 +578,8 @@ export async function loadContentItemDebug(
 	};
 }
 
-export async function loadRevisionDebug(heliaNode: Helia, revision: ContentRevisionMeta): Promise<RevisionDebug> {
-	const itemBytes = await fetchIpfsDigestBytes(heliaNode, revision.ipfsHash);
+export async function loadRevisionDebug(revision: ContentRevisionMeta): Promise<RevisionDebug> {
+	const itemBytes = await fetchIpfsDigestBytes(revision.ipfsHash);
 	const item = decodeItemMessage(itemBytes);
 	return {
 		...revision,
@@ -643,7 +630,10 @@ async function fetchItemState(
 			const value = json && typeof json === 'object' && 'owner' in json ? json : null;
 			ownerHex = accountIdToHex(value?.owner);
 			flags = value?.flags == null ? null : Number(value.flags);
-			revisionId = value?.revision_id == null && value?.revisionId == null ? null : Number(value.revision_id ?? value.revisionId);
+			revisionId =
+				value?.revision_id == null && value?.revisionId == null
+					? null
+					: Number(value.revision_id ?? value.revisionId);
 		}
 	}
 
@@ -664,7 +654,6 @@ async function fetchItemState(
 }
 
 export async function loadContentByItemId(
-	heliaNode: Helia,
 	itemIdHex: string,
 	api: ApiPromise | null = null,
 	revisionId: number | null = null
@@ -679,7 +668,7 @@ export async function loadContentByItemId(
 	const latestRevision = revisions[0] ?? null;
 	const firstRevision = revisions.length > 0 ? revisions[revisions.length - 1] : null;
 	const revisionIpfsHashHex = selectedRevision.ipfsHash;
-	const itemBytes = await fetchIpfsDigestBytes(heliaNode, revisionIpfsHashHex);
+	const itemBytes = await fetchIpfsDigestBytes(revisionIpfsHashHex);
 	const item = decodeItemMessage(itemBytes);
 	const titlePayload = findMixin(item, TITLE_MIXIN_ID);
 	const bodyPayload = findMixin(item, BODY_TEXT_MIXIN_ID);
@@ -706,9 +695,7 @@ export async function loadContentByItemId(
 		profileAccountType: decodedProfile?.accountType ?? null,
 		profileLocation: decodedProfile?.location ?? null,
 		existingImagePayload: imagePayload,
-		imagePreviewDataUrl: imagePayload
-			? await previewDataUrlForImageMixin(heliaNode, imagePayload)
-			: null,
+		imagePreviewDataUrl: imagePayload ? await previewDataUrlForImageMixin(imagePayload) : null,
 		contentLoaded: true,
 		contentError: null,
 		rawMixinIds: item.mixinPayload.map((entry) => entry.mixinId),
@@ -774,7 +761,10 @@ function matchesForumDraft(left: ForumDraft, right: ForumDraft): boolean {
 	return equalJsonValue(left, right);
 }
 
-function matchesContentRevisionDraft(left: ContentRevisionDraft, right: ContentRevisionDraft): boolean {
+function matchesContentRevisionDraft(
+	left: ContentRevisionDraft,
+	right: ContentRevisionDraft
+): boolean {
 	return equalJsonValue(left, right);
 }
 
@@ -801,8 +791,16 @@ async function publishDerivedItemAndFinalize(params: {
 	revisionIpfsHashBytes: Uint8Array;
 	buildAdditionalCalls?: (itemIdBytes: Uint8Array) => unknown[];
 }): Promise<{ itemIdBytes: Uint8Array }> {
-	const { api, account, nonce, parents, links, flags, revisionIpfsHashBytes, buildAdditionalCalls } =
-		params;
+	const {
+		api,
+		account,
+		nonce,
+		parents,
+		links,
+		flags,
+		revisionIpfsHashBytes,
+		buildAdditionalCalls
+	} = params;
 	const itemIdBytes = await deriveItemId(account.address, nonce);
 	const publishItem = (
 		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
@@ -820,7 +818,6 @@ async function publishDerivedItemAndFinalize(params: {
 
 async function saveEncodedContentItem(params: {
 	api: ApiPromise;
-	heliaNode: Helia;
 	account: InjectedAccount;
 	itemPayload: Uint8Array;
 	parents: string[];
@@ -828,8 +825,8 @@ async function saveEncodedContentItem(params: {
 	flags: number;
 	buildAdditionalCalls?: (itemIdBytes: Uint8Array) => unknown[];
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
-	const { api, heliaNode, account, itemPayload, parents, links, flags, buildAdditionalCalls } = params;
-	const revisionIpfsHashHex = await uploadIpfsDigest(heliaNode, itemPayload);
+	const { api, account, itemPayload, parents, links, flags, buildAdditionalCalls } = params;
+	const revisionIpfsHashHex = await uploadIpfsDigest(itemPayload);
 	const nonce = crypto.getRandomValues(new Uint8Array(32));
 	const { itemIdBytes } = await publishDerivedItemAndFinalize({
 		api,
@@ -845,15 +842,14 @@ async function saveEncodedContentItem(params: {
 }
 
 export async function prepareForumSave(params: {
-	heliaNode: Helia;
 	draft: ForumDraft;
 	selectedImageFile?: File | null;
 }): Promise<PreparedForumSave> {
-	const { heliaNode, draft, selectedImageFile = null } = params;
-	const builtImage = selectedImageFile ? await buildImagePayload(heliaNode, selectedImageFile) : null;
+	const { draft, selectedImageFile = null } = params;
+	const builtImage = selectedImageFile ? await buildImagePayload(selectedImageFile) : null;
 	const imagePayload = builtImage?.payload ?? null;
 	const itemPayload = encodeForumItem(draft, imagePayload);
-	const revisionIpfsHashHex = await uploadIpfsDigest(heliaNode, itemPayload);
+	const revisionIpfsHashHex = await uploadIpfsDigest(itemPayload);
 	return {
 		draft: { ...draft },
 		selectedImageFileName: selectedImageFile?.name ?? null,
@@ -867,15 +863,14 @@ export async function prepareForumSave(params: {
 
 export async function saveForum(params: {
 	api: ApiPromise;
-	heliaNode: Helia;
 	account: InjectedAccount;
 	draft: ForumDraft;
 	selectedImageFile?: File | null;
 	prepared?: PreparedForumSave | null;
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
-	const { api, heliaNode, account, draft, selectedImageFile = null, prepared } = params;
+	const { api, account, draft, selectedImageFile = null, prepared } = params;
 	const resolved = await resolvePreparedValue({
-		input: { heliaNode, draft, selectedImageFile },
+		input: { draft, selectedImageFile },
 		prepared,
 		canReusePrepared: (candidate, input) =>
 			candidate.selectedImageFileName === (input.selectedImageFile?.name ?? null) &&
@@ -892,9 +887,9 @@ export async function saveForum(params: {
 		flags: FORUM_ITEM_FLAGS,
 		revisionIpfsHashBytes: resolved.revisionIpfsHashBytes,
 		buildAdditionalCalls: (itemIdBytes) => [
-			(api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>).accountContent.addItem(
-				itemIdBytes
-			)
+			(
+				api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
+			).accountContent.addItem(itemIdBytes)
 		]
 	});
 	return {
@@ -905,17 +900,19 @@ export async function saveForum(params: {
 
 export async function saveCategory(params: {
 	api: ApiPromise;
-	heliaNode: Helia;
 	account: InjectedAccount;
 	forumItemIdHex: string;
 	draft: CategoryDraft;
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
-	const { api, heliaNode, account, forumItemIdHex, draft } = params;
+	const { api, account, forumItemIdHex, draft } = params;
 	return await saveEncodedContentItem({
 		api,
-		heliaNode,
 		account,
-		itemPayload: encodeContentItem({ contentTypeId: CATEGORY_CONTENT_TYPE_ID, title: draft.title, bodyText: draft.body }),
+		itemPayload: encodeContentItem({
+			contentTypeId: CATEGORY_CONTENT_TYPE_ID,
+			title: draft.title,
+			bodyText: draft.body
+		}),
 		parents: [forumItemIdHex],
 		links: [],
 		flags: CATEGORY_ITEM_FLAGS
@@ -924,17 +921,19 @@ export async function saveCategory(params: {
 
 export async function saveForumPost(params: {
 	api: ApiPromise;
-	heliaNode: Helia;
 	account: InjectedAccount;
 	categoryItemIdHex: string;
 	draft: ForumPostDraft;
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
-	const { api, heliaNode, account, categoryItemIdHex, draft } = params;
+	const { api, account, categoryItemIdHex, draft } = params;
 	return await saveEncodedContentItem({
 		api,
-		heliaNode,
 		account,
-		itemPayload: encodeContentItem({ contentTypeId: FORUM_POST_CONTENT_TYPE_ID, title: draft.title, bodyText: draft.body }),
+		itemPayload: encodeContentItem({
+			contentTypeId: FORUM_POST_CONTENT_TYPE_ID,
+			title: draft.title,
+			bodyText: draft.body
+		}),
 		parents: [],
 		links: [categoryItemIdHex],
 		flags: FORUM_POST_ITEM_FLAGS
@@ -943,17 +942,19 @@ export async function saveForumPost(params: {
 
 export async function saveComment(params: {
 	api: ApiPromise;
-	heliaNode: Helia;
 	account: InjectedAccount;
 	parentItemIdHex: string;
 	draft: CommentDraft;
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
-	const { api, heliaNode, account, parentItemIdHex, draft } = params;
+	const { api, account, parentItemIdHex, draft } = params;
 	return await saveEncodedContentItem({
 		api,
-		heliaNode,
 		account,
-		itemPayload: encodeContentItem({ contentTypeId: COMMENT_CONTENT_TYPE_ID, title: null, bodyText: draft.body }),
+		itemPayload: encodeContentItem({
+			contentTypeId: COMMENT_CONTENT_TYPE_ID,
+			title: null,
+			bodyText: draft.body
+		}),
 		parents: [parentItemIdHex],
 		links: [],
 		flags: COMMENT_ITEM_FLAGS
@@ -961,20 +962,18 @@ export async function saveComment(params: {
 }
 
 export async function prepareContentRevision(params: {
-	heliaNode: Helia;
 	content: LoadedContent;
 	draft: ContentRevisionDraft;
 	selectedImageFile?: File | null;
 	removeImage?: boolean;
 }): Promise<PreparedContentRevision> {
-	const { heliaNode, content, draft, selectedImageFile = null, removeImage = false } = params;
+	const { content, draft, selectedImageFile = null, removeImage = false } = params;
 	if (content.contentTypeId == null)
 		throw new Error('Cannot revise content with an unknown content type.');
 	const languageTag = content.languageTag ?? DEFAULT_LANGUAGE_TAG;
-	const builtImage = selectedImageFile ? await buildImagePayload(heliaNode, selectedImageFile) : null;
+	const builtImage = selectedImageFile ? await buildImagePayload(selectedImageFile) : null;
 	const imagePayload = removeImage ? null : (builtImage?.payload ?? content.existingImagePayload);
 	const revisionIpfsHashHex = await uploadIpfsDigest(
-		heliaNode,
 		encodeContentItem({
 			contentTypeId: content.contentTypeId,
 			title: draft.title,
@@ -991,7 +990,9 @@ export async function prepareContentRevision(params: {
 		selectedImageFileName: selectedImageFile?.name ?? null,
 		removeImage,
 		imagePayload,
-		imagePreviewDataUrl: removeImage ? null : (builtImage?.previewDataUrl ?? content.imagePreviewDataUrl),
+		imagePreviewDataUrl: removeImage
+			? null
+			: (builtImage?.previewDataUrl ?? content.imagePreviewDataUrl),
 		revisionIpfsHashHex,
 		revisionIpfsHashBytes: hexToBytes(revisionIpfsHashHex)
 	};
@@ -999,7 +1000,6 @@ export async function prepareContentRevision(params: {
 
 export async function publishContentRevision(params: {
 	api: ApiPromise;
-	heliaNode: Helia;
 	account: InjectedAccount;
 	content: LoadedContent;
 	draft: ContentRevisionDraft;
@@ -1007,11 +1007,19 @@ export async function publishContentRevision(params: {
 	removeImage?: boolean;
 	prepared?: PreparedContentRevision | null;
 }): Promise<{ itemIdHex: string; revisionIpfsHashHex: string }> {
-	const { api, heliaNode, account, content, draft, selectedImageFile = null, removeImage = false, prepared } = params;
+	const {
+		api,
+		account,
+		content,
+		draft,
+		selectedImageFile = null,
+		removeImage = false,
+		prepared
+	} = params;
 	if (!canEditContent(content, account))
 		throw new Error('The active account cannot edit this content item.');
 	const resolved = await resolvePreparedValue({
-		input: { heliaNode, content, draft, selectedImageFile, removeImage },
+		input: { content, draft, selectedImageFile, removeImage },
 		prepared,
 		canReusePrepared: (candidate, input) =>
 			candidate.contentTypeId === input.content.contentTypeId &&
@@ -1021,7 +1029,10 @@ export async function publishContentRevision(params: {
 			matchesItemIdList(candidate.links, input.content.latestLinks) &&
 			(input.selectedImageFile
 				? true
-				: matchesBytes(candidate.imagePayload, input.removeImage ? null : input.content.existingImagePayload)) &&
+				: matchesBytes(
+						candidate.imagePayload,
+						input.removeImage ? null : input.content.existingImagePayload
+					)) &&
 			matchesContentRevisionDraft(candidate.draft, input.draft),
 		prepare: prepareContentRevision
 	});
@@ -1079,7 +1090,10 @@ function eventOrderValue(entry: DecodedEvent): number {
 	return Number(entry.blockNumber ?? 0);
 }
 
-async function loadPublishedChildren(parentItemIdHex: string, limit = 500): Promise<PublishedChild[]> {
+async function loadPublishedChildren(
+	parentItemIdHex: string,
+	limit = 500
+): Promise<PublishedChild[]> {
 	const normalizedParent = parentItemIdHex.toLowerCase();
 	const response = await indexerRequest<{ events?: DecodedEvent[] }>('acuity_getEvents', {
 		key: { type: 'Custom', value: { name: 'item_id', kind: 'bytes32', value: parentItemIdHex } },
@@ -1090,7 +1104,9 @@ async function loadPublishedChildren(parentItemIdHex: string, limit = 500): Prom
 		if (entry.event.palletName !== 'Content' || entry.event.eventName !== 'PublishItem') continue;
 		const itemIdHex = normalizeItemId(entry.event.fields.item_id ?? entry.event.fields.itemId);
 		if (!itemIdHex || itemIdHex.toLowerCase() === normalizedParent) continue;
-		const parents = extractItemIds(entry.event.fields.parents).map((parent) => parent.toLowerCase());
+		const parents = extractItemIds(entry.event.fields.parents).map((parent) =>
+			parent.toLowerCase()
+		);
 		if (!parents.includes(normalizedParent)) continue;
 		children.set(itemIdHex.toLowerCase(), {
 			itemIdHex,
@@ -1101,7 +1117,8 @@ async function loadPublishedChildren(parentItemIdHex: string, limit = 500): Prom
 		});
 	}
 	return [...children.values()].sort(
-		(a, b) => a.blockTime - b.blockTime || a.blockNumber - b.blockNumber || a.eventIndex - b.eventIndex
+		(a, b) =>
+			a.blockTime - b.blockTime || a.blockNumber - b.blockNumber || a.eventIndex - b.eventIndex
 	);
 }
 
@@ -1111,30 +1128,28 @@ async function loadForumCategoryIds(forum: LoadedContent): Promise<string[]> {
 }
 
 export async function loadForumCategories(params: {
-	heliaNode: Helia;
 	api: ApiPromise | null;
 	forum: LoadedContent;
 }): Promise<ForumCategory[]> {
-	const { heliaNode, api, forum } = params;
+	const { api, forum } = params;
 	const categories = await Promise.all(
 		(await loadForumCategoryIds(forum)).map((itemId) =>
-			loadContentByItemId(heliaNode, itemId, api).catch(() => null)
+			loadContentByItemId(itemId, api).catch(() => null)
 		)
 	);
 	return categories.filter((entry): entry is ForumCategory => isValidForumCategory(entry, forum));
 }
 
 export async function loadForumCategoriesIncremental(params: {
-	heliaNode: Helia;
 	api: ApiPromise | null;
 	forum: LoadedContent;
 	onCategory: (category: ForumCategory) => void;
 }): Promise<ForumCategory[]> {
-	const { heliaNode, api, forum, onCategory } = params;
+	const { api, forum, onCategory } = params;
 	const categories: ForumCategory[] = [];
 	await Promise.all(
 		(await loadForumCategoryIds(forum)).map(async (itemId) => {
-			const entry = await loadContentByItemId(heliaNode, itemId, api).catch(() => null);
+			const entry = await loadContentByItemId(itemId, api).catch(() => null);
 			if (!isValidForumCategory(entry, forum)) return;
 			categories.push(entry);
 			onCategory(entry);
@@ -1174,16 +1189,15 @@ async function loadCategoryPostIds(category: LoadedContent): Promise<string[]> {
 }
 
 export async function loadCategoryForumPostsIncremental(params: {
-	heliaNode: Helia;
 	api: ApiPromise | null;
 	category: LoadedContent;
 	onPost: (post: ForumPost) => void;
 }): Promise<ForumPost[]> {
-	const { heliaNode, api, category, onPost } = params;
+	const { api, category, onPost } = params;
 	const posts: ForumPost[] = [];
 	await Promise.all(
 		(await loadCategoryPostIds(category)).map(async (itemId) => {
-			const entry = await loadContentByItemId(heliaNode, itemId, api).catch(() => null);
+			const entry = await loadContentByItemId(itemId, api).catch(() => null);
 			if (!isValidForumPost(entry, category.itemIdHex)) return;
 			posts.push(entry);
 			onPost(entry);
@@ -1192,27 +1206,31 @@ export async function loadCategoryForumPostsIncremental(params: {
 	return posts;
 }
 
-function isValidComment(entry: LoadedContent | null): entry is LoadedContent & { contentType: 'comment' } {
-	return entry?.contentType === 'comment' && (entry.flags == null || (entry.flags & RETRACTED_ITEM_FLAGS) === 0);
+function isValidComment(
+	entry: LoadedContent | null
+): entry is LoadedContent & { contentType: 'comment' } {
+	return (
+		entry?.contentType === 'comment' &&
+		(entry.flags == null || (entry.flags & RETRACTED_ITEM_FLAGS) === 0)
+	);
 }
 
 export async function loadCommentTree(params: {
-	heliaNode: Helia;
 	api: ApiPromise | null;
 	parentItemIdHex: string;
 }): Promise<ForumComment[]> {
-	const { heliaNode, api, parentItemIdHex } = params;
+	const { api, parentItemIdHex } = params;
 	const children = await loadPublishedChildren(parentItemIdHex, 1000);
 	const comments = await Promise.all(
 		children.map(async (child) => {
-			const entry = await loadContentByItemId(heliaNode, child.itemIdHex, api).catch(() => null);
+			const entry = await loadContentByItemId(child.itemIdHex, api).catch(() => null);
 			if (!isValidComment(entry)) return null;
 			return {
 				...entry,
 				parentItemIdHex,
 				publishBlockNumber: child.blockNumber,
 				publishEventIndex: child.eventIndex,
-				replies: await loadCommentTree({ heliaNode, api, parentItemIdHex: child.itemIdHex })
+				replies: await loadCommentTree({ api, parentItemIdHex: child.itemIdHex })
 			};
 		})
 	);

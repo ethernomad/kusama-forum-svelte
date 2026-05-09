@@ -24,25 +24,28 @@
 
 	const isForumOwner = $derived.by(() => {
 		const account = injectedAccounts.activeAccount;
-		return !!forum.ownerHex && !!account && forum.ownerHex.toLowerCase() === accountAddressToHex(account.address).toLowerCase();
+		return (
+			!!forum.ownerHex &&
+			!!account &&
+			forum.ownerHex.toLowerCase() === accountAddressToHex(account.address).toLowerCase()
+		);
 	});
 
 	$effect(() => {
 		void forum.itemIdHex;
-		if (!connections.heliaNode || forum.contentType !== 'forum') return;
+		if (!connections.ipfsConnected || forum.contentType !== 'forum') return;
 		categoryError = '';
 		categoryNotice = '';
 		void refreshCategories();
 	});
 
 	async function refreshCategories() {
-		if (!connections.heliaNode || forum.contentType !== 'forum') return;
+		if (!connections.ipfsConnected || forum.contentType !== 'forum') return;
 		const currentCategoryRequestId = ++categoryRequestId;
 		categories = [];
 		categoryLoading = true;
 		try {
 			await loadForumCategoriesIncremental({
-				heliaNode: connections.heliaNode,
 				api: connections.api,
 				forum,
 				onCategory: (category) => {
@@ -51,26 +54,22 @@
 				}
 			});
 		} catch (value) {
-			if (currentCategoryRequestId === categoryRequestId) categoryError = value instanceof Error ? value.message : String(value);
+			if (currentCategoryRequestId === categoryRequestId)
+				categoryError = value instanceof Error ? value.message : String(value);
 		} finally {
 			if (currentCategoryRequestId === categoryRequestId) categoryLoading = false;
 		}
 	}
 
 	async function addCategory() {
-		if (!connections.api || !connections.heliaNode || !injectedAccounts.activeAccount) return;
+		if (!connections.api || !connections.ipfsConnected || !injectedAccounts.activeAccount) return;
 		categoryError = '';
 		categoryNotice = '';
-		if (!connections.ipfsHasRequiredLocalConnection) {
-			categoryError = 'Publishing requires a connection to the local IPFS pinner on one of the default local swarm addresses.';
-			return;
-		}
 		categorySaving = true;
 		try {
 			categoryNotice = PUBLISH_NOTICE_PREPARING;
 			await saveCategory({
 				api: connections.api,
-				heliaNode: connections.heliaNode,
 				account: injectedAccounts.activeAccount,
 				forumItemIdHex: forum.itemIdHex,
 				draft: categoryDraft
@@ -105,22 +104,50 @@
 <div class="mt-8 border-t border-surface-200-800 pt-6">
 	<div class="flex items-center justify-between gap-3">
 		<h3 class="text-xl font-semibold">Categories</h3>
-		<p class="text-surface-700-300 text-sm">{categories.length} valid categor{categories.length === 1 ? 'y' : 'ies'}{categoryLoading ? ' loading…' : ''}</p>
+		<p class="text-sm text-surface-700-300">
+			{categories.length} valid categor{categories.length === 1 ? 'y' : 'ies'}{categoryLoading
+				? ' loading…'
+				: ''}
+		</p>
 	</div>
 
 	{#if categoryError}
-		<div class="card mt-4 border-red-500/40 px-3 py-2 text-sm text-red-200">{categoryError}</div>
+		<div class="mt-4 card border-red-500/40 px-3 py-2 text-sm text-red-200">{categoryError}</div>
 	{/if}
 	{#if categoryNotice}
-		<div class="card mt-4 border-green-500/40 px-3 py-2 text-sm text-green-200">{categoryNotice}</div>
+		<div class="mt-4 card border-green-500/40 px-3 py-2 text-sm text-green-200">
+			{categoryNotice}
+		</div>
 	{/if}
 
 	{#if isForumOwner}
-		<form class="card mt-4 space-y-3 p-4" onsubmit={(event) => { event.preventDefault(); void addCategory(); }}>
+		<form
+			class="mt-4 space-y-3 card p-4"
+			onsubmit={(event) => {
+				event.preventDefault();
+				void addCategory();
+			}}
+		>
 			<h4 class="font-semibold">Add category</h4>
-			<input class="input w-full" bind:value={categoryDraft.title} placeholder="Category title" disabled={categorySaving} required />
-			<textarea class="textarea min-h-24 w-full" bind:value={categoryDraft.body} placeholder="Category body" disabled={categorySaving}></textarea>
-			<button class="btn variant-filled" type="submit" disabled={categorySaving || !connections.ipfsHasRequiredLocalConnection || !categoryDraft.title.trim()}>{categorySaving ? 'Publishing…' : 'Publish category'}</button>
+			<input
+				class="input w-full"
+				bind:value={categoryDraft.title}
+				placeholder="Category title"
+				disabled={categorySaving}
+				required
+			/>
+			<textarea
+				class="textarea min-h-24 w-full"
+				bind:value={categoryDraft.body}
+				placeholder="Category body"
+				disabled={categorySaving}
+			></textarea>
+			<button
+				class="variant-filled btn"
+				type="submit"
+				disabled={categorySaving || !connections.ipfsConnected || !categoryDraft.title.trim()}
+				>{categorySaving ? 'Publishing…' : 'Publish category'}</button
+			>
 		</form>
 	{/if}
 
@@ -129,17 +156,32 @@
 			<article class="card p-4">
 				<div class="flex items-start justify-between gap-3">
 					<div>
-						<a class="text-lg font-semibold hover:underline" href={resolve(`/item_id/${encodeURIComponent(category.itemIdHex)}`)}>{category.title || 'Untitled category'}</a>
-						{#if category.bodyText}<p class="text-surface-700-300 mt-2 whitespace-pre-wrap text-sm">{category.bodyText}</p>{/if}
-						<code class="text-surface-700-300 mt-2 block break-all text-xs">{category.itemIdHex}</code>
+						<a
+							class="text-lg font-semibold hover:underline"
+							href={resolve(`/item_id/${encodeURIComponent(category.itemIdHex)}`)}
+							>{category.title || 'Untitled category'}</a
+						>
+						{#if category.bodyText}<p class="mt-2 text-sm whitespace-pre-wrap text-surface-700-300">
+								{category.bodyText}
+							</p>{/if}
+						<code class="mt-2 block text-xs break-all text-surface-700-300"
+							>{category.itemIdHex}</code
+						>
 					</div>
 					{#if isForumOwner}
-						<button class="btn variant-outline" type="button" disabled={categorySaving} onclick={() => void removeCategory(category)}>Remove</button>
+						<button
+							class="variant-outline btn"
+							type="button"
+							disabled={categorySaving}
+							onclick={() => void removeCategory(category)}>Remove</button
+						>
 					{/if}
 				</div>
 			</article>
 		{:else}
-			<p class="text-surface-700-300 text-sm">{categoryLoading ? 'Loading categories…' : 'No valid categories found.'}</p>
+			<p class="text-surface-700-300 text-sm">
+				{categoryLoading ? 'Loading categories…' : 'No valid categories found.'}
+			</p>
 		{/each}
 	</div>
 </div>

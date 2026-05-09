@@ -35,16 +35,18 @@
 	];
 
 	const isConnected = (status: string) =>
-		status === 'Connected' || status.startsWith('Running in browser') || status.startsWith('Connected to global IPFS');
+		status === 'Connected' ||
+		status.startsWith('Running in browser') ||
+		status.startsWith('Connected to global IPFS');
 </script>
 
 <div class="space-y-6 xl:sticky xl:top-6 xl:self-start">
-	<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-4">
+	<section class="rounded-xl border border-surface-200-800 bg-surface-50-950 p-4">
 		<div class="grid grid-cols-2 gap-2">
 			<button
 				type="button"
 				onclick={goBack}
-				class="border-surface-200-800 bg-surface-50-950 hover:bg-surface-100-900 inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors"
+				class="inline-flex items-center justify-center gap-2 rounded-lg border border-surface-200-800 bg-surface-50-950 px-3 py-2 text-sm font-medium transition-colors hover:bg-surface-100-900"
 				aria-label="Go back"
 			>
 				<span aria-hidden="true">←</span>
@@ -54,7 +56,7 @@
 			<button
 				type="button"
 				onclick={goForward}
-				class="border-surface-200-800 bg-surface-50-950 hover:bg-surface-100-900 inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors"
+				class="inline-flex items-center justify-center gap-2 rounded-lg border border-surface-200-800 bg-surface-50-950 px-3 py-2 text-sm font-medium transition-colors hover:bg-surface-100-900"
 				aria-label="Go forward"
 			>
 				<span>Forward</span>
@@ -67,7 +69,7 @@
 
 	<Navigation
 		layout="sidebar"
-		class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-2 shadow-sm"
+		class="rounded-xl border border-surface-200-800 bg-surface-50-950 p-2 shadow-sm"
 	>
 		<Navigation.Content>
 			<Navigation.Group class="space-y-1">
@@ -85,9 +87,9 @@
 						<div class="flex items-start justify-between gap-3">
 							<div class="min-w-0">
 								<p class="text-sm font-medium">{item.label}</p>
-								<p class="text-surface-700-300 mt-1 text-xs">{item.description}</p>
+								<p class="mt-1 text-xs text-surface-700-300">{item.description}</p>
 							</div>
-							<span class="text-surface-700-300 text-xs">→</span>
+							<span class="text-xs text-surface-700-300">→</span>
 						</div>
 					</Navigation.TriggerAnchor>
 				{/each}
@@ -95,35 +97,50 @@
 		</Navigation.Content>
 	</Navigation>
 
-	<section class="border-surface-200-800 bg-surface-50-950 rounded-xl border p-4">
+	<section class="rounded-xl border border-surface-200-800 bg-surface-50-950 p-4">
 		<div class="mb-4">
 			<h2 class="text-sm font-medium">Status</h2>
 		</div>
 		<div class="space-y-3 text-sm">
 			<div class="flex items-center justify-between gap-3">
 				<div class="flex items-center gap-3">
-					<span class={`h-3 w-3 rounded-full ${isConnected(connections.status) ? 'bg-green-500' : 'bg-red-500'}`}></span>
+					<span
+						class={`h-3 w-3 rounded-full ${isConnected(connections.status) ? 'bg-green-500' : 'bg-red-500'}`}
+					></span>
 					<span class="font-medium">Chain</span>
 				</div>
-				<span class="text-surface-700-300">{#if connections.latestBlockNumber}#{connections.latestBlockNumber}{:else}—{/if}</span>
+				<span class="text-surface-700-300"
+					>{#if connections.latestBlockNumber}#{connections.latestBlockNumber}{:else}—{/if}</span
+				>
 			</div>
 
 			<div class="flex items-center justify-between gap-3">
 				<div class="flex items-center gap-3">
-					<span class={`h-3 w-3 rounded-full ${isConnected(connections.indexerStatus) ? 'bg-green-500' : 'bg-red-500'}`}></span>
+					<span
+						class={`h-3 w-3 rounded-full ${isConnected(connections.indexerStatus) ? 'bg-green-500' : 'bg-red-500'}`}
+					></span>
 					<span class="font-medium">Indexer</span>
 				</div>
-				<span class="text-surface-700-300">{#if connections.indexerLatestBlockNumber}#{connections.indexerLatestBlockNumber}{:else}—{/if}</span>
+				<span class="text-surface-700-300"
+					>{#if connections.indexerLatestBlockNumber}#{connections.indexerLatestBlockNumber}{:else}—{/if}</span
+				>
 			</div>
 
-			<a class="flex items-center justify-between gap-3 rounded-lg transition-colors hover:bg-surface-100-900/60" href={resolve('/status/ipfs')} aria-label="IPFS status page">
+			<a
+				class="flex items-center justify-between gap-3 rounded-lg transition-colors hover:bg-surface-100-900/60"
+				href={resolve('/status/ipfs')}
+				aria-label="IPFS status page"
+			>
 				<div class="flex items-center gap-3">
-					<span class={`h-3 w-3 rounded-full ${isConnected(connections.ipfsStatus) ? 'bg-green-500' : 'bg-red-500'}`}></span>
+					<span
+						class={`h-3 w-3 rounded-full ${connections.ipfsConnected ? 'bg-green-500' : 'bg-red-500'}`}
+					></span>
 					<span class="font-medium">IPFS</span>
 				</div>
-				<span class="text-surface-700-300">{connections.ipfsConnections}</span>
+				<span class="text-surface-700-300"
+					>{connections.ipfsPeerId ? connections.ipfsPeerId.slice(0, 8) : '—'}</span
+				>
 			</a>
 		</div>
 	</section>
-
 </div>

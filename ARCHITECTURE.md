@@ -20,9 +20,9 @@ The dapp depends on **three external systems** running alongside the browser app
 
 1. **Substrate chain node** at `ws://127.0.0.1:9944`
 2. **Indexer websocket service** at `ws://127.0.0.1:8172`
-3. **Local IPFS/Kubo pinner** reachable on the configured local libp2p websocket addresses
+3. **Local IPFS/Kubo daemon API** at `http://127.0.0.1:5001`
 
-It also starts an **in-browser Helia/libp2p node** so the browser can read and publish IPFS content directly.
+The browser connects to the local IPFS daemon directly over the Kubo HTTP API for both reads and writes.
 
 In short:
 
@@ -47,7 +47,7 @@ That means:
 
 - the app is built as a static SPA
 - route handling happens in the browser
-- chain access, extension access, signing, and Helia all run client-side
+- chain access, extension access, signing, and IPFS API access all run client-side
 - there is no app server storing content or mediating transactions
 
 ### Why this matters
@@ -80,7 +80,7 @@ Important routes:
 - `src/routes/item_id/[item_id]/+page.svelte` — generic content viewer for any item
 - `src/routes/item_id/[item_id]/edit/+page.svelte` — revision editor for editable items
 - `src/routes/item_id/[item_id]/debug/+page.svelte` — low-level inspection of chain/indexed/IPFS state
-- `src/routes/status/ipfs/+page.svelte` — IPFS-specific status page with pinner queue details
+- `src/routes/status/ipfs/+page.svelte` — IPFS daemon status page
 
 ### 2. Stateful client services
 
@@ -90,13 +90,12 @@ Key services:
 
 - `accounts.svelte.ts` — wallet/extension account discovery and selection
 - `balances.svelte.ts` — balance watching for injected accounts
-- `connections.svelte.ts` — chain, indexer, and Helia startup/status
+- `connections.svelte.ts` — chain, indexer, and IPFS daemon startup/status
 - `indexer.svelte.ts` — websocket client for indexed queries and subscriptions
 - `content.ts` — content encoding/decoding, loading, and publishing
 - `profile.ts` — profile-specific encoding/loading/publishing
 - `content-images.ts` — shared image mixin encoding/decoding, JPEG conversion, mipmap generation, and IPFS preview loading used by both profile and forum content flows
-- `ipfs-publish.ts` — publish bytes to IPFS and coordinate local pinner ACKs
-- `ipfs-pinning-queue.svelte.ts` — persistent background queue for local pinner acknowledgements
+- `ipfs.ts` — direct Kubo HTTP API helpers for `/api/v0/id`, `/api/v0/add`, and `/api/v0/cat`
 - `reactions.ts` — fetch and submit reactions
 - `chain-signing.ts` — generic extension signing/finalization helper
 
@@ -109,7 +108,7 @@ The UI talks to protocol services:
 - **Polkadot extension** via `@polkadot/extension-dapp`
 - **Substrate node** via `@polkadot/api`
 - **Indexer** via raw websocket JSON-RPC-like messages
-- **IPFS** via Helia + libp2p + UnixFS
+- **IPFS** via the local Kubo HTTP API
 
 ---
 
@@ -156,21 +155,13 @@ On unmount it stops:
 - subscribes to index status spans
 - fetches a current snapshot of indexed spans
 
-#### In-browser IPFS node
+#### Local IPFS daemon connection
 
-- creates a singleton `libp2p` instance with websocket, WebRTC, WebTransport, relay, noise, yamux, identify, ping, and DHT client mode
-- wraps it in Helia
-- bootstraps against a mix of global bootstrap nodes and local IPFS bootstrap addresses
-- tries to dial the local IPFS/Kubo pinner
-- periodically refreshes IPFS status
-- periodically retries local reconnects
-- flushes any pending CID ACK queue entries once local connectivity exists
+- polls `POST /api/v0/id` on the configured local Kubo API URL
+- records daemon identity details such as peer ID, addresses, agent version, and protocol version
+- treats daemon availability as the publishing/readiness gate for IPFS-backed content
 
-### Why Helia is global
-
-`getOrCreateHeliaNode()` caches the Helia node on `globalThis`.
-
-That prevents accidental creation of multiple browser IPFS nodes during client-side navigation or hot reloads, and keeps the peer identity stable within the session.
+There is no in-browser Helia or libp2p node anymore. All IPFS reads and writes go through the local daemon.
 
 ---
 
@@ -182,10 +173,10 @@ That prevents accidental creation of multiple browser IPFS nodes during client-s
 - connected `ApiPromise`
 - latest chain block number
 - indexer status and indexed spans
-- Helia peer ID and current swarm addresses
-- active IPFS connections
-- whether the app has the required local IPFS connection
-- last local dial error
+- IPFS daemon API URL and status
+- daemon peer ID, addresses, and protocols
+- daemon agent/protocol version
+- last daemon error
 
 The sidebar component, `src/lib/components/StatusSidebar.svelte`, reads this state and shows:
 
@@ -197,9 +188,11 @@ The sidebar component, `src/lib/components/StatusSidebar.svelte`, reads this sta
 
 The dedicated status page, `src/routes/status/ipfs/+page.svelte`, is specifically for IPFS and shows:
 
-- Helia swarm target status
-- pinner queue counts
-- local dial errors for the IPFS/Kubo connection
+- local Kubo API status
+- daemon peer ID and public key
+- advertised addresses
+- supported protocols
+- last daemon error
 
 So the sidebar is effectively the operator dashboard for the dapp.
 
@@ -347,13 +340,13 @@ The generic viewer route is `src/routes/item_id/[item_id]/+page.svelte`.
 
 ### Load sequence
 
-When the route loads and Helia is ready:
+When the route loads and the local IPFS daemon is reachable:
 
 1. normalize the item ID
-2. call `loadContentByItemId(heliaNode, itemId, api, revisionId?)`
+2. call `loadContentByItemId(itemId, api, revisionId?)`
 3. fetch latest or selected revision metadata from the indexer
 4. fetch chain item state when available
-5. fetch revision bytes from IPFS via Helia/UnixFS
+5. fetch revision bytes from IPFS via `POST /api/v0/cat`
 6. decode protobuf item payload and mixins
 7. derive `created` from the first indexed `PublishRevision` timestamp and `modified` from the latest indexed `PublishRevision` timestamp
 8. render content-specific UI
@@ -389,7 +382,7 @@ From events it extracts:
 Using the selected revision's IPFS digest, the app:
 
 - reconstructs a CIDv0
-- `cat`s bytes from Helia UnixFS
+- reads bytes from the local daemon with `POST /api/v0/cat`
 - decodes the item protobuf
 - extracts title/body/language/profile/image mixins
 
@@ -412,35 +405,16 @@ Publishing always follows the same broad pattern:
 
 1. validate chain/IPFS/account readiness
 2. build protobuf payload in-browser
-3. add bytes to IPFS through Helia
-4. enqueue CID for local pinner ACK
-5. sign and submit the chain extrinsic via extension
-6. wait for finalization
-7. rely on the indexer to make the new state discoverable
+3. add bytes to IPFS through the local Kubo API
+4. sign and submit the chain extrinsic via extension
+5. wait for finalization
+6. rely on the indexer to make the new state discoverable
 
-### Why publishing requires a local IPFS connection
+### Why publishing requires a reachable local daemon
 
-`publishBytesToIpfs()` explicitly checks `hasDefaultLocalIpfsConnection()`.
+Publishing now depends on the browser being able to reach the local Kubo API. The dapp uploads bytes with `POST /api/v0/add?pin=true&quieter=true`, receives a CIDv0 from the daemon, converts it to the digest bytes expected by the chain, and then submits the extrinsic.
 
-The app does not treat “stored in browser Helia only” as enough. It requires a live link to the local pinner because the dapp wants published content to be acknowledged and persisted beyond the ephemeral browser node.
-
-### CID and ACK workflow
-
-When bytes are added to IPFS:
-
-- the CID is added to the local `ipfsPinningQueue`
-- background processes attempt to `provide` the CID on the DHT
-- the app opens `/x/acuity/ack/1.0.0` to the local pinner peer
-- it sends the CID and expects `ACK: received <cid>`
-
-This ACK step is a notable part of the architecture:
-
-- publishing is user-visible immediately
-- pinning confirmation is tracked separately
-- failures survive refresh because the queue is stored in local storage
-- retries happen automatically when the local IPFS connection comes back
-
-The queue UI is exposed at `/status`.
+There is no separate ACK queue or custom local pinner protocol anymore.
 
 ---
 
@@ -758,7 +732,6 @@ All real enforcement still happens on-chain when the extrinsic is executed.
 ### Persisted in browser local storage
 
 - active selected account
-- IPFS pinner ACK queue
 
 ### Derived from indexer
 
@@ -786,15 +759,11 @@ The app is designed around the fact that its external dependencies may come and 
 - live updates stop
 - many reads cannot reconstruct item relationships
 
-### IPFS/local pinner unavailable
+### Local IPFS daemon unavailable
 
-- publishing is blocked unless the required local IPFS connection exists
-- already-published content may fail to load if not retrievable from IPFS
-- pending CID ACKs remain in local storage until connectivity returns
-
-### Why the ACK queue is important
-
-The queue decouples “user completed publish flow” from “local pinner definitely acknowledged CID”. That is a good fit for a browser dapp, where connectivity can be intermittent and the page can be refreshed at any time.
+- publishing is blocked unless the browser can reach the local Kubo API
+- already-published content may fail to load if not retrievable through the daemon
+- the status page surfaces the latest daemon error so operators can fix the local IPFS process
 
 ---
 
@@ -869,11 +838,9 @@ A quick map of the most important files:
 
 ### Protocol connections
 
-- `src/lib/services/connections.svelte.ts` — chain/indexer/Helia startup
+- `src/lib/services/connections.svelte.ts` — chain/indexer/IPFS daemon startup
 - `src/lib/services/indexer.svelte.ts` — indexer transport and subscriptions
-- `src/lib/services/ipfs-local.ts` — local IPFS peer detection
-- `src/lib/services/ipfs-publish.ts` — IPFS publish + local ACK protocol
-- `src/lib/services/ipfs-pinning-queue.svelte.ts` — persistent ACK queue
+- `src/lib/services/ipfs.ts` — direct local Kubo HTTP API helpers
 
 ### Content logic
 
@@ -908,22 +875,21 @@ A quick map of the most important files:
 Here is the full path for creating a forum post:
 
 1. User selects an extension account.
-2. App has already connected to chain, indexer, and Helia.
+2. App has already connected to chain, indexer, and the local IPFS daemon.
 3. User opens a category page.
 4. `CategoryForumPosts.svelte` submits `saveForumPost()`.
 5. `content.ts` encodes the post into protobuf item bytes.
-6. `publishBytesToIpfs()` adds the bytes to Helia/UnixFS.
-7. The resulting CID is queued for local pinner acknowledgement.
+6. `uploadIpfsDigest()` uploads the bytes to the local Kubo API.
+7. The daemon returns a CID whose digest is passed into the extrinsic.
 8. `saveForumPost()` derives an item ID from account + nonce + namespace.
 9. It submits `content.publishItem(nonce, [], flags, [categoryId], [], revisionHash)`.
 10. The extension signs the extrinsic.
 11. The app waits for finalization.
 12. The user is redirected to `/{itemId}`.
 13. The viewer route queries the indexer for revision events.
-14. The viewer fetches the IPFS payload via Helia.
+14. The viewer fetches the IPFS payload via the local Kubo API.
 15. The post is decoded and rendered.
-16. Background ACK/provide logic advertises the CID and waits for the local pinner acknowledgement.
-17. Future revisions or comments appear live through indexer subscriptions.
+16. Future revisions or comments appear live through indexer subscriptions.
 
 That sequence is representative of almost every feature in the app.
 
@@ -931,4 +897,4 @@ That sequence is representative of almost every feature in the app.
 
 ## In one sentence
 
-This dapp is a **static, browser-only Svelte client** that uses a **Polkadot extension for signing**, a **Substrate node for canonical state**, an **indexer for history/discovery/live updates**, and an **in-browser Helia node plus a local IPFS pinner for content storage and availability**.
+This dapp is a **static, browser-only Svelte client** that uses a **Polkadot extension for signing**, a **Substrate node for canonical state**, an **indexer for history/discovery/live updates**, and a **local Kubo IPFS daemon over its HTTP API for content storage and retrieval**.

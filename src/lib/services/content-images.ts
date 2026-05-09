@@ -1,10 +1,8 @@
-import type { Helia } from 'helia';
-import { unixfs } from '@helia/unixfs';
 import { CID } from 'multiformats/cid';
 import { create as createDigest, decode as decodeDigest } from 'multiformats/hashes/digest';
 import protobuf from 'protobufjs/minimal';
 
-import { publishBytesToIpfs } from './ipfs-publish';
+import { fetchIpfsBytesByCid, uploadRawIpfsCid } from './ipfs';
 
 const { Reader, Writer } = protobuf;
 type Bytes = Uint8Array<ArrayBufferLike>;
@@ -87,18 +85,12 @@ function multihashBytesToCid(multihashBytes: Uint8Array): CID {
 	return CID.createV0(createDigest(0x12, digest.digest));
 }
 
-async function addIpfs(heliaNode: Helia, bytes: Uint8Array): Promise<CID> {
-	const { cid } = await publishBytesToIpfs(heliaNode, bytes);
-	return cid;
+async function addIpfs(bytes: Uint8Array): Promise<CID> {
+	return CID.parse(await uploadRawIpfsCid(bytes));
 }
 
-async function fetchIpfsBytesByCid(heliaNode: Helia, cid: CID): Promise<Bytes> {
-	const fs = unixfs(heliaNode);
-	const chunks: Uint8Array[] = [];
-	for await (const chunk of fs.cat(cid)) {
-		chunks.push(u8a(chunk));
-	}
-	return concatBytes(...chunks);
+async function loadIpfsBytesByCid(cid: CID): Promise<Bytes> {
+	return u8a(await fetchIpfsBytesByCid(cid));
 }
 
 async function openImageBitmapFromFile(file: File): Promise<ImageBitmap> {
@@ -113,10 +105,14 @@ async function renderJpeg(bitmap: ImageBitmap, width: number, height: number): P
 	if (!ctx) throw new Error('Canvas 2D context is unavailable.');
 	ctx.drawImage(bitmap, 0, 0, width, height);
 	const blob = await new Promise<Blob>((resolve, reject) => {
-		canvas.toBlob((value) => {
-			if (value) resolve(value);
-			else reject(new Error('Failed to encode JPEG preview.'));
-		}, 'image/jpeg', JPEG_QUALITY);
+		canvas.toBlob(
+			(value) => {
+				if (value) resolve(value);
+				else reject(new Error('Failed to encode JPEG preview.'));
+			},
+			'image/jpeg',
+			JPEG_QUALITY
+		);
 	});
 	return new Uint8Array(await blob.arrayBuffer());
 }
@@ -159,7 +155,6 @@ export function decodeImageMixin(bytes: Uint8Array): DecodedImageMixin {
 }
 
 export async function buildImagePayload(
-	heliaNode: Helia,
 	file: File
 ): Promise<{ payload: Bytes; previewDataUrl: string }> {
 	const bitmap = await openImageBitmapFromFile(file);
@@ -178,7 +173,7 @@ export async function buildImagePayload(
 			if (!previewDataUrl) {
 				previewDataUrl = `data:image/jpeg;base64,${btoa(String.fromCharCode(...jpegBytes))}`;
 			}
-			const cid = await addIpfs(heliaNode, jpegBytes);
+			const cid = await addIpfs(jpegBytes);
 			mipmapLevel.push({
 				filesize: BigInt(jpegBytes.length),
 				ipfsHash: u8a(cid.multihash.bytes)
@@ -204,10 +199,7 @@ export async function buildImagePayload(
 	}
 }
 
-export async function previewDataUrlForImageMixin(
-	heliaNode: Helia,
-	payload: Bytes
-): Promise<string | null> {
+export async function previewDataUrlForImageMixin(payload: Bytes): Promise<string | null> {
 	const image = decodeImageMixin(payload);
 	const multihash = image.mipmapLevel[0]?.ipfsHash?.length
 		? image.mipmapLevel[0].ipfsHash
@@ -215,6 +207,6 @@ export async function previewDataUrlForImageMixin(
 			? image.ipfsHash
 			: null;
 	if (!multihash) return null;
-	const bytes = await fetchIpfsBytesByCid(heliaNode, multihashBytesToCid(multihash));
+	const bytes = await loadIpfsBytesByCid(multihashBytesToCid(multihash));
 	return `data:image/jpeg;base64,${btoa(String.fromCharCode(...bytes))}`;
 }

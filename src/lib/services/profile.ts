@@ -1,9 +1,5 @@
 import type { ApiPromise } from '@polkadot/api';
-import type { Helia } from 'helia';
-import { unixfs } from '@helia/unixfs';
 import { cryptoWaitReady, decodeAddress } from '@polkadot/util-crypto';
-import { CID } from 'multiformats/cid';
-import { create as createDigest, decode as decodeDigest } from 'multiformats/hashes/digest';
 import protobuf from 'protobufjs/minimal';
 
 const { Reader, Writer } = protobuf;
@@ -14,7 +10,7 @@ import type { InjectedAccount } from './accounts.svelte';
 import { signAndFinalize, type SignableExtrinsic } from './chain-signing';
 import { buildImagePayload, previewDataUrlForImageMixin } from './content-images';
 import { getIndexedEvents } from './indexer.svelte';
-import { publishBytesToIpfs } from './ipfs-publish';
+import { digestHexToCid, fetchIpfsDigestBytes, uploadIpfsDigest } from './ipfs';
 import { resolvePreparedValue } from './prepared-publish';
 const PROFILE_ITEM_FLAGS = 0x01;
 const PROFILE_CONTENT_TYPE_ID = 4;
@@ -193,7 +189,7 @@ function decodeTitleMixin(bytes: Uint8Array): { title: string } {
 	let title = '';
 	while (reader.pos < reader.len) {
 		const tag = reader.uint32();
-		if ((tag >>> 3) === 1) title = reader.string();
+		if (tag >>> 3 === 1) title = reader.string();
 		else reader.skipType(tag & 7);
 	}
 	return { title };
@@ -210,7 +206,7 @@ function decodeBodyTextMixin(bytes: Uint8Array): { bodyText: string } {
 	let bodyText = '';
 	while (reader.pos < reader.len) {
 		const tag = reader.uint32();
-		if ((tag >>> 3) === 1) bodyText = reader.string();
+		if (tag >>> 3 === 1) bodyText = reader.string();
 		else reader.skipType(tag & 7);
 	}
 	return { bodyText };
@@ -224,7 +220,11 @@ function encodeLanguageMixin(languageTag: string): Uint8Array {
 
 function encodeProfileMixin(accountType: number, location: string): Uint8Array {
 	const writer = Writer.create();
-	writeInt32Field(writer, 1, Number.isInteger(accountType) && accountType >= 0 && accountType <= 8 ? accountType : 0);
+	writeInt32Field(
+		writer,
+		1,
+		Number.isInteger(accountType) && accountType >= 0 && accountType <= 8 ? accountType : 0
+	);
 	writeStringField(writer, 2, location);
 	return writer.finish();
 }
@@ -307,38 +307,6 @@ async function deriveItemId(accountAddress: string, nonce: Uint8Array): Promise<
 	return blake2_256(concatBytes(accountId, nonce, u32Le(ITEM_ID_NAMESPACE)));
 }
 
-function digestHexToCid(hexValue: string): CID {
-	const digest = createDigest(0x12, hexToBytes(hexValue));
-	return CID.createV0(digest);
-}
-
-function cidToDigestHex(cid: CID): string {
-	return toHex(cid.multihash.digest);
-}
-
-async function addIpfs(heliaNode: Helia, bytes: Uint8Array): Promise<CID> {
-	const { cid } = await publishBytesToIpfs(heliaNode, bytes);
-	return cid;
-}
-
-async function uploadIpfsDigest(heliaNode: Helia, bytes: Uint8Array): Promise<string> {
-	const cid = await addIpfs(heliaNode, bytes);
-	return cidToDigestHex(cid);
-}
-
-async function fetchIpfsBytesByCid(heliaNode: Helia, cid: CID): Promise<Bytes> {
-	const fs = unixfs(heliaNode);
-	const chunks: Uint8Array[] = [];
-	for await (const chunk of fs.cat(cid)) {
-		chunks.push(u8a(chunk));
-	}
-	return concatBytes(...chunks);
-}
-
-async function fetchIpfsDigestBytes(heliaNode: Helia, ipfsHashHex: string): Promise<Bytes> {
-	return fetchIpfsBytesByCid(heliaNode, digestHexToCid(ipfsHashHex));
-}
-
 function encodeProfileItem(draft: ProfileDraft, imagePayload: Bytes | null): Bytes {
 	const item: ItemMessage = {
 		contentTypeId: PROFILE_CONTENT_TYPE_ID,
@@ -383,7 +351,9 @@ async function fetchLatestRevisionHash(itemIdHex: string): Promise<string> {
 	});
 
 	const entries = (response.events ?? [])
-		.filter((entry) => entry.event.palletName === 'Content' && entry.event.eventName === 'PublishRevision')
+		.filter(
+			(entry) => entry.event.palletName === 'Content' && entry.event.eventName === 'PublishRevision'
+		)
 		.map((entry) => {
 			const fields = entry.event.fields;
 			return {
@@ -395,7 +365,8 @@ async function fetchLatestRevisionHash(itemIdHex: string): Promise<string> {
 
 	entries.sort((a, b) => b.revisionId - a.revisionId);
 	const latest = entries[0]?.ipfsHash;
-	if (!latest) throw new Error('No indexed Content::PublishRevision event was found for this item.');
+	if (!latest)
+		throw new Error('No indexed Content::PublishRevision event was found for this item.');
 	return latest;
 }
 
@@ -451,8 +422,13 @@ function normalizeItemId(storageValue: unknown): Bytes | null {
 	return null;
 }
 
-export async function loadProfileMetadata(api: ApiPromise, address: string): Promise<LoadedProfile> {
-	const storageValue = await (api.query as Record<string, Record<string, (...args: unknown[]) => Promise<unknown>>>).accountProfile.accountProfile(address);
+export async function loadProfileMetadata(
+	api: ApiPromise,
+	address: string
+): Promise<LoadedProfile> {
+	const storageValue = await (
+		api.query as Record<string, Record<string, (...args: unknown[]) => Promise<unknown>>>
+	).accountProfile.accountProfile(address);
 	const itemId = normalizeItemId(storageValue);
 	if (!itemId) return createEmptyProfile();
 
@@ -470,11 +446,11 @@ export async function loadProfileMetadata(api: ApiPromise, address: string): Pro
 	};
 }
 
-export async function loadProfileContent(heliaNode: Helia, profile: LoadedProfile): Promise<LoadedProfile> {
+export async function loadProfileContent(profile: LoadedProfile): Promise<LoadedProfile> {
 	if (!profile.exists || !profile.itemIdHex || !profile.revisionIpfsHashHex) return profile;
 
 	try {
-		const itemBytes = await fetchIpfsDigestBytes(heliaNode, profile.revisionIpfsHashHex);
+		const itemBytes = await fetchIpfsDigestBytes(profile.revisionIpfsHashHex);
 		const item = decodeItemMessage(itemBytes);
 		const titlePayload = findMixin(item, TITLE_MIXIN_ID);
 		const bodyPayload = findMixin(item, BODY_TEXT_MIXIN_ID);
@@ -482,12 +458,16 @@ export async function loadProfileContent(heliaNode: Helia, profile: LoadedProfil
 		const imagePayload = findMixin(item, IMAGE_MIXIN_ID);
 		const contentTypeId = item.contentTypeId;
 		if (contentTypeId !== PROFILE_CONTENT_TYPE_ID) {
-			throw new Error(`Profile item has unexpected content_type_id ${contentTypeId}; expected ${PROFILE_CONTENT_TYPE_ID}.`);
+			throw new Error(
+				`Profile item has unexpected content_type_id ${contentTypeId}; expected ${PROFILE_CONTENT_TYPE_ID}.`
+			);
 		}
 
 		const title = titlePayload ? decodeTitleMixin(titlePayload).title : '';
 		const bodyText = bodyPayload ? decodeBodyTextMixin(bodyPayload).bodyText : '';
-		const decodedProfile = profilePayload ? decodeProfileMixin(profilePayload) : { accountType: 0, location: '' };
+		const decodedProfile = profilePayload
+			? decodeProfileMixin(profilePayload)
+			: { accountType: 0, location: '' };
 
 		return {
 			...profile,
@@ -497,7 +477,7 @@ export async function loadProfileContent(heliaNode: Helia, profile: LoadedProfil
 				location: decodedProfile.location,
 				accountType: decodedProfile.accountType
 			},
-			imagePreviewDataUrl: imagePayload ? await previewDataUrlForImageMixin(heliaNode, imagePayload) : null,
+			imagePreviewDataUrl: imagePayload ? await previewDataUrlForImageMixin(imagePayload) : null,
 			existingImagePayload: imagePayload,
 			contentLoaded: true,
 			contentError: null
@@ -511,24 +491,22 @@ export async function loadProfileContent(heliaNode: Helia, profile: LoadedProfil
 	}
 }
 
-export async function loadProfile(api: ApiPromise, heliaNode: Helia, address: string): Promise<LoadedProfile> {
+export async function loadProfile(api: ApiPromise, address: string): Promise<LoadedProfile> {
 	const metadata = await loadProfileMetadata(api, address);
-	return await loadProfileContent(heliaNode, metadata);
+	return await loadProfileContent(metadata);
 }
 
-
 export async function prepareProfileSave(params: {
-	heliaNode: Helia;
 	draft: ProfileDraft;
 	existingItemIdHex: string | null;
 	existingImagePayload: Bytes | null;
 	selectedImageFile: File | null;
 }): Promise<PreparedProfileSave> {
-	const { heliaNode, draft, existingItemIdHex, existingImagePayload, selectedImageFile } = params;
-	const builtImage = selectedImageFile ? await buildImagePayload(heliaNode, selectedImageFile) : null;
+	const { draft, existingItemIdHex, existingImagePayload, selectedImageFile } = params;
+	const builtImage = selectedImageFile ? await buildImagePayload(selectedImageFile) : null;
 	const imagePayload = builtImage?.payload ?? existingImagePayload;
 	const itemPayload = encodeProfileItem(draft, imagePayload);
-	const revisionIpfsHashHex = await uploadIpfsDigest(heliaNode, itemPayload);
+	const revisionIpfsHashHex = await uploadIpfsDigest(itemPayload);
 	return {
 		draft: { ...draft },
 		existingItemIdHex,
@@ -544,7 +522,6 @@ export async function prepareProfileSave(params: {
 
 export async function saveProfile(params: {
 	api: ApiPromise;
-	heliaNode: Helia;
 	account: InjectedAccount;
 	draft: ProfileDraft;
 	existingItemIdHex: string | null;
@@ -552,9 +529,17 @@ export async function saveProfile(params: {
 	selectedImageFile: File | null;
 	prepared?: PreparedProfileSave | null;
 }): Promise<SaveProfileResult> {
-	const { api, heliaNode, account, draft, existingItemIdHex, existingImagePayload, selectedImageFile, prepared } = params;
+	const {
+		api,
+		account,
+		draft,
+		existingItemIdHex,
+		existingImagePayload,
+		selectedImageFile,
+		prepared
+	} = params;
 	const resolved = await resolvePreparedValue({
-		input: { heliaNode, draft, existingItemIdHex, existingImagePayload, selectedImageFile },
+		input: { draft, existingItemIdHex, existingImagePayload, selectedImageFile },
 		prepared,
 		canReusePrepared: (candidate, input) =>
 			candidate.existingItemIdHex === input.existingItemIdHex &&
@@ -568,19 +553,18 @@ export async function saveProfile(params: {
 
 	if (existingItemIdHex) {
 		const itemIdBytes = hexToBytes(existingItemIdHex);
-		const extrinsic = (api.tx as Record<string, Record<string, (...args: unknown[]) => { signAndSend: Function }>>).content.publishRevision(
-			itemIdBytes,
-			[],
-			[],
-			revisionIpfsHashBytes
-		);
+		const extrinsic = (
+			api.tx as Record<string, Record<string, (...args: unknown[]) => { signAndSend: Function }>>
+		).content.publishRevision(itemIdBytes, [], [], revisionIpfsHashBytes);
 		await signAndFinalize(extrinsic as SignableExtrinsic, account);
 		return {
 			exists: true,
 			itemIdHex: existingItemIdHex,
 			revisionIpfsHashHex,
 			draft,
-			imagePreviewDataUrl: resolved.imagePreviewDataUrl ?? (imagePayload ? await previewDataUrlForImageMixin(heliaNode, imagePayload) : null),
+			imagePreviewDataUrl:
+				resolved.imagePreviewDataUrl ??
+				(imagePayload ? await previewDataUrlForImageMixin(imagePayload) : null),
 			existingImagePayload: imagePayload,
 			contentLoaded: true,
 			contentError: null
@@ -589,19 +573,15 @@ export async function saveProfile(params: {
 
 	const nonce = crypto.getRandomValues(new Uint8Array(32));
 	const itemIdBytes = await deriveItemId(account.address, nonce);
-	const publishItem = (api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>).content.publishItem(
-		nonce,
-		[],
-		PROFILE_ITEM_FLAGS,
-		[],
-		[],
-		revisionIpfsHashBytes
-	);
-	const setProfile = (api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>).accountProfile.setProfile(itemIdBytes);
-	const batch = (api.tx as Record<string, Record<string, (...calls: unknown[]) => { signAndSend: Function }>>).utility.batchAll([
-		publishItem,
-		setProfile
-	]);
+	const publishItem = (
+		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
+	).content.publishItem(nonce, [], PROFILE_ITEM_FLAGS, [], [], revisionIpfsHashBytes);
+	const setProfile = (
+		api.tx as Record<string, Record<string, (...args: unknown[]) => unknown>>
+	).accountProfile.setProfile(itemIdBytes);
+	const batch = (
+		api.tx as Record<string, Record<string, (...calls: unknown[]) => { signAndSend: Function }>>
+	).utility.batchAll([publishItem, setProfile]);
 	await signAndFinalize(batch as SignableExtrinsic, account);
 
 	return {
@@ -609,7 +589,9 @@ export async function saveProfile(params: {
 		itemIdHex: toHex(itemIdBytes),
 		revisionIpfsHashHex,
 		draft,
-		imagePreviewDataUrl: resolved.imagePreviewDataUrl ?? (imagePayload ? await previewDataUrlForImageMixin(heliaNode, imagePayload) : null),
+		imagePreviewDataUrl:
+			resolved.imagePreviewDataUrl ??
+			(imagePayload ? await previewDataUrlForImageMixin(imagePayload) : null),
 		existingImagePayload: imagePayload,
 		contentLoaded: true,
 		contentError: null
