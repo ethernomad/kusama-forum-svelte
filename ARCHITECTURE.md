@@ -488,7 +488,7 @@ Replies are simply comments whose parent is another comment item.
 
 ### 6. Publish content revision
 
-`publishContentRevision()` handles editing of revisionable content.
+`publishContentRevision()` handles editing of revisionable content, including inline edits to comments from `CommentItem.svelte`.
 
 It verifies:
 
@@ -564,7 +564,7 @@ So category membership is inferred through indexed link relationships, not direc
 - keep only valid comments
 - recurse for each comment to build nested replies
 
-Comment cards render the comment timestamp in the browser's local timezone instead of showing chain/block metadata in the header.
+Comment cards render the comment timestamp in the browser's local timezone instead of showing chain/block metadata in the header. When multiple comment revisions exist, the card shows a revision dropdown and loads the selected revision body while also pointing reactions at that selected revision. If the active account owns a revisionable comment, the card also shows an inline edit form that republishes the comment body via `publishContentRevision()` while preserving its parent relationship.
 
 This makes the comment system a true item tree reconstructed from indexed publish events.
 
