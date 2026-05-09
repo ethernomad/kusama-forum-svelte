@@ -161,12 +161,13 @@ export function decodeImageMixin(bytes: Uint8Array): DecodedImageMixin {
 export async function buildImagePayload(
 	heliaNode: Helia,
 	file: File
-): Promise<{ payload: Bytes; previewDataUrl: string }> {
+): Promise<{ payload: Bytes; previewDataUrl: string; cids: string[] }> {
 	const bitmap = await openImageBitmapFromFile(file);
 	try {
 		const width = bitmap.width;
 		const height = bitmap.height;
 		const mipmapLevel: { filesize: bigint; ipfsHash: Bytes }[] = [];
+		const cids: string[] = [];
 		let previewDataUrl = '';
 		let level = 0;
 
@@ -179,6 +180,7 @@ export async function buildImagePayload(
 				previewDataUrl = `data:image/jpeg;base64,${btoa(String.fromCharCode(...jpegBytes))}`;
 			}
 			const cid = await addIpfs(heliaNode, jpegBytes);
+			cids.push(cid.toString());
 			mipmapLevel.push({
 				filesize: BigInt(jpegBytes.length),
 				ipfsHash: u8a(cid.multihash.bytes)
@@ -197,7 +199,8 @@ export async function buildImagePayload(
 				height,
 				mipmapLevel
 			}),
-			previewDataUrl
+			previewDataUrl,
+			cids
 		};
 	} finally {
 		bitmap.close();

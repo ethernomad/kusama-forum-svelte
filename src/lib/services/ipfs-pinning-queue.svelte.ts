@@ -1,8 +1,6 @@
-import type { Helia } from 'helia';
-
 export type IpfsPinningQueueEntry = {
 	cid: string;
-	status: 'queued' | 'sending' | 'acked' | 'failed';
+	status: 'sending' | 'acked' | 'failed';
 	createdAt: number;
 	updatedAt: number;
 	attempts: number;
@@ -17,7 +15,6 @@ type IpfsPinningQueueState = {
 
 const STORAGE_KEY = 'kusama-forum.ipfs-pinning-queue';
 let hydrated = false;
-let flushPromise: Promise<void> | null = null;
 
 export const ipfsPinningQueue = $state<IpfsPinningQueueState>({
 	entries: [],
@@ -45,7 +42,7 @@ function hydrateQueue(): void {
 			.filter((entry): entry is Partial<IpfsPinningQueueEntry> & { cid: string } => typeof entry?.cid === 'string' && !!entry.cid)
 			.map((entry) => ({
 				cid: entry.cid,
-				status: entry.status === 'acked' ? 'acked' : entry.status === 'failed' ? 'failed' : 'queued',
+				status: entry.status === 'acked' ? 'acked' : entry.status === 'failed' ? 'failed' : 'sending',
 				createdAt: Number(entry.createdAt ?? Date.now()),
 				updatedAt: Number(entry.updatedAt ?? entry.createdAt ?? Date.now()),
 				attempts: Number(entry.attempts ?? 0),
@@ -53,77 +50,59 @@ function hydrateQueue(): void {
 				ackedAt: entry.ackedAt == null ? null : Number(entry.ackedAt)
 			}));
 	} catch (error) {
-		console.warn('Failed to hydrate IPFS pinning queue', error);
+		console.warn('Failed to hydrate IPFS pinning history', error);
 	}
 }
 
-export function enqueueCidForAck(cid: string): void {
-	hydrateQueue();
+function getOrCreateEntry(cid: string): IpfsPinningQueueEntry {
 	const now = Date.now();
 	const existing = ipfsPinningQueue.entries.find((entry) => entry.cid === cid);
-	if (existing) {
-		if (existing.status === 'acked') return;
-		existing.status = 'queued';
-		existing.updatedAt = now;
-		existing.lastError = null;
-		persistQueue();
-		return;
+	if (existing) return existing;
+
+	const entry: IpfsPinningQueueEntry = {
+		cid,
+		status: 'sending',
+		createdAt: now,
+		updatedAt: now,
+		attempts: 0,
+		lastError: null,
+		ackedAt: null
+	};
+	ipfsPinningQueue.entries = [entry, ...ipfsPinningQueue.entries];
+	return entry;
+}
+
+export function beginCidPinningBatch(cids: string[]): void {
+	hydrateQueue();
+	const now = Date.now();
+	for (const cid of [...new Set(cids.filter(Boolean))]) {
+		const entry = getOrCreateEntry(cid);
+		entry.status = 'sending';
+		entry.updatedAt = now;
+		entry.attempts += 1;
+		entry.lastError = null;
+		entry.ackedAt = null;
 	}
-	ipfsPinningQueue.entries = [
-		{
-			cid,
-			status: 'queued',
-			createdAt: now,
-			updatedAt: now,
-			attempts: 0,
-			lastError: null,
-			ackedAt: null
-		},
-		...ipfsPinningQueue.entries
-	];
 	persistQueue();
 }
 
-export async function flushPendingCidAcks(
-	heliaNode: Helia | null,
-	acknowledgeCid: (heliaNode: Helia, cid: string) => Promise<void>
-): Promise<void> {
+export function markCidPinningSucceeded(cid: string): void {
 	hydrateQueue();
-	if (!heliaNode || flushPromise) return await (flushPromise ?? Promise.resolve());
-	flushPromise = (async () => {
-		for (const entry of ipfsPinningQueue.entries) {
-			if (entry.status !== 'queued' && entry.status !== 'failed') continue;
-			entry.status = 'sending';
-			entry.updatedAt = Date.now();
-			entry.attempts += 1;
-			entry.lastError = null;
-			persistQueue();
-			try {
-				await acknowledgeCid(heliaNode, entry.cid);
-				entry.status = 'acked';
-				entry.ackedAt = Date.now();
-				entry.updatedAt = entry.ackedAt;
-			} catch (error) {
-				entry.status = 'failed';
-				entry.updatedAt = Date.now();
-				entry.lastError = error instanceof Error ? error.message : String(error);
-			}
-			persistQueue();
-		}
-		ipfsPinningQueue.lastProcessedAt = Date.now();
-	})().finally(() => {
-		flushPromise = null;
-	});
-	return await flushPromise;
+	const entry = getOrCreateEntry(cid);
+	entry.status = 'acked';
+	entry.ackedAt = Date.now();
+	entry.updatedAt = entry.ackedAt;
+	ipfsPinningQueue.lastProcessedAt = entry.ackedAt;
+	persistQueue();
 }
 
-export function retryCidAck(cid: string): void {
+export function markCidPinningFailed(cid: string, error: unknown): void {
 	hydrateQueue();
-	const entry = ipfsPinningQueue.entries.find((value) => value.cid === cid);
-	if (!entry) return;
-	entry.status = 'queued';
+	const entry = getOrCreateEntry(cid);
+	entry.status = 'failed';
 	entry.updatedAt = Date.now();
-	entry.lastError = null;
+	entry.lastError = error instanceof Error ? error.message : String(error);
+	ipfsPinningQueue.lastProcessedAt = entry.updatedAt;
 	persistQueue();
 }
 

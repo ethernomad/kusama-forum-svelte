@@ -8,7 +8,11 @@ import {
 	completeIpfsProvide,
 	failIpfsProvide
 } from './ipfs-provide-status.svelte';
-import { enqueueCidForAck } from './ipfs-pinning-queue.svelte';
+import {
+	beginCidPinningBatch,
+	markCidPinningFailed,
+	markCidPinningSucceeded
+} from './ipfs-pinning-queue.svelte';
 import {
 	defaultLocalIpfsConnectionAddress,
 	hasDefaultLocalIpfsConnection
@@ -38,8 +42,39 @@ export async function publishBytesToIpfs(
 		cidVersion: 0,
 		rawLeaves: false
 	});
-	enqueueCidForAck(cid.toString());
 	return { cid };
+}
+
+export async function pinPublishedCids(heliaNode: Helia, cids: Array<CID | string>): Promise<void> {
+	assertDefaultLocalIpfsConnection(heliaNode);
+	const cidTexts = [...new Set(cids.map((cid) => (typeof cid === 'string' ? cid : cid.toString())).filter(Boolean))];
+	if (cidTexts.length === 0) return;
+
+	beginCidPinningBatch(cidTexts);
+	const results = await Promise.allSettled(
+		cidTexts.map(async (cidText) => {
+			try {
+				await provideAndAckCid(heliaNode, cidText);
+				markCidPinningSucceeded(cidText);
+			} catch (error) {
+				markCidPinningFailed(cidText, error);
+				throw error;
+			}
+		})
+	);
+
+	const failures = results.flatMap((result, index) =>
+		result.status === 'rejected'
+			? [{ cid: cidTexts[index], message: result.reason instanceof Error ? result.reason.message : String(result.reason) }]
+			: []
+	);
+	if (failures.length > 0) {
+		throw new Error(
+			`Failed to send ${failures.length} CID${failures.length === 1 ? '' : 's'} to the local IPFS pinner: ${failures
+				.map((failure) => `${failure.cid} (${failure.message})`)
+				.join('; ')}`
+		);
+	}
 }
 
 export async function provideAndAckCid(heliaNode: Helia, cid: CID | string): Promise<void> {
