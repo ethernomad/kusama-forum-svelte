@@ -20,13 +20,16 @@ export async function signAndWaitForInBlock(
 			.signAndSend(
 				account.address,
 				{ signer: injector.signer },
-				(result: { status: { isInBlock?: boolean }; dispatchError?: unknown }) => {
+				(result: {
+					status: { isInBlock?: boolean; isFinalized?: boolean };
+					dispatchError?: unknown;
+				}) => {
 					if (result.dispatchError) {
 						unsubscribe?.();
 						reject(new Error(errorMessage));
 						return;
 					}
-					if (result.status?.isInBlock) {
+					if (result.status?.isInBlock || result.status?.isFinalized) {
 						unsubscribe?.();
 						resolve();
 					}
