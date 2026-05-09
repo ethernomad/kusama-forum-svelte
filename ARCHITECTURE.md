@@ -461,7 +461,7 @@ The forum flow now uses a similar batched-create pattern, except its follow-up c
 - content type is category
 - parent is the forum item
 - no links
-- flags include category flag
+- flags include category and revisionable bits
 - optionally re-encodes a selected category image to JPEG, uploads mipmap levels to IPFS, and appends the image mixin to the category payload
 - submits `content.publishItem(...)`
 
