@@ -21,10 +21,13 @@
 		subscribeIndexerEvents
 	} from '$lib/services/indexer.svelte';
 	import {
-		loadTrustedAccountSummary,
+		fetchTrustedAccounts,
 		getAccountTrustStatus,
+		loadTrustedAccountSummaries,
+		loadTrustedAccountSummary,
 		trustAccount,
-		untrustAccount
+		untrustAccount,
+		type TrustedAccountSummary
 	} from '$lib/services/trusted-accounts';
 
 	let loading = $state(false);
@@ -48,11 +51,17 @@
 	let refreshNonce = $state(0);
 	let commentsRefreshNonce = $state(0);
 	let trustRefreshNonce = $state(0);
+	let trustedAccounts = $state<TrustedAccountSummary[]>([]);
+	let trustedThatTrusts = $state<TrustedAccountSummary[]>([]);
+	let trustListsLoading = $state(false);
 
 	const itemId = $derived(page.params.item_id);
 	const canEdit = $derived(canEditContent(content, injectedAccounts.activeAccount));
 	const canRenderProtectedContent = $derived(
-		!authorAddress || trustStatus.isOwnAccount || trustStatus.isTrustedViaExtendedGraph
+		isProfileContent(content) ||
+			!authorAddress ||
+			trustStatus.isOwnAccount ||
+			trustStatus.isTrustedViaExtendedGraph
 	);
 	const trustIcon = $derived(trustStatus.isOwnAccount ? '' : '🛡');
 	const trustButtonClass = $derived(
@@ -123,6 +132,9 @@
 			isTrustedViaExtendedGraph: false,
 			trustedVia: []
 		};
+		trustedAccounts = [];
+		trustedThatTrusts = [];
+		trustListsLoading = false;
 	});
 
 	$effect(() => {
@@ -159,16 +171,21 @@
 				isTrustedViaExtendedGraph: false,
 				trustedVia: []
 			};
+			trustedAccounts = [];
+			trustedThatTrusts = [];
+			trustListsLoading = false;
 			return;
 		}
 
 		const author = content.ownerHex;
+		const isProfileContent = content.contentType === 'profile';
 		authorLoading = true;
 		void loadTrustedAccountSummary(api, author)
-			.then((summary) => {
+			.then(async (summary) => {
 				authorAddress = summary.address;
 				authorName = summary.displayName;
 				authorProfileItemIdHex = summary.profileItemIdHex;
+
 				if (!activeAddress) {
 					trustStatus = {
 						isOwnAccount: false,
@@ -176,17 +193,34 @@
 						isTrustedViaExtendedGraph: true,
 						trustedVia: []
 					};
+				} else {
+					trustStatus = await getAccountTrustStatus(api, activeAddress, summary.address);
+				}
+
+				if (!isProfileContent) {
+					trustedAccounts = [];
+					trustedThatTrusts = [];
+					trustListsLoading = false;
 					return;
 				}
-				return getAccountTrustStatus(api, activeAddress, summary.address).then((status) => {
-					trustStatus = status;
-				});
+
+				trustListsLoading = true;
+				const trustedAddresses = await fetchTrustedAccounts(api, summary.address);
+				const [trustedSummaries, trustedViaSummaries] = await Promise.all([
+					loadTrustedAccountSummaries(api, trustedAddresses),
+					loadTrustedAccountSummaries(api, trustStatus.trustedVia)
+				]);
+				trustedAccounts = trustedSummaries;
+				trustedThatTrusts = trustedViaSummaries;
 			})
 			.catch((value) => {
 				trustError = value instanceof Error ? value.message : String(value);
+				trustedAccounts = [];
+				trustedThatTrusts = [];
 			})
 			.finally(() => {
 				authorLoading = false;
+				trustListsLoading = false;
 			});
 	});
 
@@ -215,6 +249,10 @@
 		}
 	}
 
+	function isProfileContent(value: LoadedContent | null): boolean {
+		return value?.contentType === 'profile';
+	}
+
 	function contentTypeLabel(value: LoadedContent | null): string {
 		switch (value?.contentType) {
 			case 'profile':
@@ -238,6 +276,14 @@
 
 	function trustStatusText(): string {
 		if (!authorAddress) return 'Loading author…';
+		if (content?.contentType === 'profile') {
+			if (!injectedAccounts.activeAccount) return 'Profiles are always visible.';
+			if (trustStatus.isOwnAccount) return 'You are viewing your own profile.';
+			if (trustStatus.isDirectlyTrusted) return 'Profile visible. This account is directly trusted by your current account.';
+			if (trustStatus.isTrustedViaExtendedGraph)
+				return 'Profile visible through your extended one-hop trust graph.';
+			return 'Profiles are always visible, even outside your extended trust graph.';
+		}
 		if (!injectedAccounts.activeAccount) return 'Connect an account to use trust filters.';
 		if (trustStatus.isOwnAccount) return 'You are the author.';
 		if (trustStatus.isDirectlyTrusted) return 'Directly trusted by your current account.';
@@ -336,6 +382,66 @@
 
 			{#if content.profileLocation}
 				<p class="mt-2 text-sm text-surface-700-300">Location: {content.profileLocation}</p>
+			{/if}
+
+			{#if content.contentType === 'profile'}
+				<div class="mt-6 grid gap-4 md:grid-cols-2">
+					<div class="rounded-xl border border-surface-300-700 p-4">
+						<h3 class="text-sm font-semibold">Trusted That Trusts</h3>
+						<p class="mt-1 text-xs text-surface-700-300">
+							Accounts you directly trust that also trust this profile.
+						</p>
+						{#if !injectedAccounts.activeAccount}
+							<p class="mt-3 text-sm text-surface-700-300">
+								Connect an account to compute this list.
+							</p>
+						{:else if trustListsLoading}
+							<p class="mt-3 text-sm text-surface-700-300">Loading accounts…</p>
+						{:else if trustedThatTrusts.length === 0}
+							<p class="mt-3 text-sm text-surface-700-300">No matching accounts.</p>
+						{:else}
+							<ul class="mt-3 space-y-2 text-sm">
+								{#each trustedThatTrusts as account (account.address)}
+									<li>
+										{#if account.profileItemIdHex}
+											<a class="anchor" href={resolve(`/item_id/${account.profileItemIdHex}`)}>
+												{account.displayName}
+											</a>
+										{:else}
+											<span>{account.displayName}</span>
+										{/if}
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</div>
+
+					<div class="rounded-xl border border-surface-300-700 p-4">
+						<h3 class="text-sm font-semibold">Trusts</h3>
+						<p class="mt-1 text-xs text-surface-700-300">
+							Accounts this profile directly trusts.
+						</p>
+						{#if trustListsLoading}
+							<p class="mt-3 text-sm text-surface-700-300">Loading accounts…</p>
+						{:else if trustedAccounts.length === 0}
+							<p class="mt-3 text-sm text-surface-700-300">This profile does not currently trust any accounts.</p>
+						{:else}
+							<ul class="mt-3 space-y-2 text-sm">
+								{#each trustedAccounts as account (account.address)}
+									<li>
+										{#if account.profileItemIdHex}
+											<a class="anchor" href={resolve(`/item_id/${account.profileItemIdHex}`)}>
+												{account.displayName}
+											</a>
+										{:else}
+											<span>{account.displayName}</span>
+										{/if}
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</div>
+				</div>
 			{/if}
 
 			{#if canRenderProtectedContent && content.imagePreviewDataUrl}

@@ -340,7 +340,7 @@ That is an important architectural choice:
 
 The generic viewer route is `src/routes/item_id/[item_id]/+page.svelte`.
 
-In addition to loading content, the viewer also resolves author profile metadata, computes direct + one-hop trust in the frontend from `TrustedAccounts` storage, renders a clickable shield for trust/untrust, and hides only the body/image when the author falls outside the active account's extended trust graph.
+In addition to loading content, the viewer also resolves author profile metadata, computes direct + one-hop trust in the frontend from `TrustedAccounts` storage, renders a clickable shield for trust/untrust, and hides only the body/image when the author falls outside the active account's extended trust graph. Profile pages are the exception: they are always viewable, and they also show `Trusted That Trusts` plus `Trusts` account lists.
 
 ### Load sequence
 
