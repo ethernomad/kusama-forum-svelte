@@ -1,6 +1,6 @@
 import { cryptoWaitReady, decodeAddress } from '@polkadot/util-crypto';
 
-import { getVirtoSessionAccount, restoreVirtoSession } from './virto-connect';
+import { getVirtoSessionAccount, restoreVirtoSession } from './virto-connect.svelte';
 
 const APP_NAME = 'Kusama Forum';
 const STORAGE_KEY = 'kusama-forum.active-account';

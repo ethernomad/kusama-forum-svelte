@@ -889,7 +889,7 @@ A quick map of the most important files:
 - `src/routes/forum-admin/+page.svelte` — forum admin page backed by account-content storage; each forum row links directly to its forum page, keeps item IDs hidden from the list, and starts with a square forum image thumbnail when available
 - `src/lib/services/reactions.ts` — reaction load/save logic
 - `src/lib/services/chain-signing.ts` — provider-aware signing helper for extension and Virto passkey accounts
-- `src/lib/services/virto-connect.ts` — Virto SDK loading, passkey registration/login, session persistence, and hex-extrinsic signing
+- `src/lib/services/virto-connect.svelte.ts` — Virto SDK loading, passkey registration/login, session persistence, and hex-extrinsic signing
 
 ### Main UI features
 

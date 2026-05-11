@@ -1,5 +1,5 @@
 import { isVirtoAccount, type InjectedAccount } from './accounts.svelte';
-import { signExtrinsicWithVirto } from './virto-connect';
+import { signExtrinsicWithVirto } from './virto-connect.svelte';
 
 export type SignableExtrinsic = {
 	signAndSend: (...args: unknown[]) => Promise<() => void>;

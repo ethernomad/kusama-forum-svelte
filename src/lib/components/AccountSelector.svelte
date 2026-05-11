@@ -16,7 +16,7 @@
 		loginWithVirto,
 		registerWithVirto,
 		virtoState
-	} from '$lib/services/virto-connect';
+	} from '$lib/services/virto-connect.svelte';
 
 	let virtoName = $state(virtoState.displayName);
 	let virtoUsername = $state(virtoState.username);
