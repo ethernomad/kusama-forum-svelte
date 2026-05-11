@@ -6,7 +6,7 @@ This document explains how the Kusama Forum Svelte dapp works end to end: runtim
 
 This app is a **client-only SvelteKit dapp** that lets users:
 
-- connect a Polkadot extension account
+- connect either a Polkadot extension account or an optional Virto passkey-backed account
 - create and edit an on-chain profile
 - create forums
 - create categories inside forums
@@ -47,14 +47,16 @@ That means:
 
 - the app is built as a static SPA
 - route handling happens in the browser
-- chain access, extension access, signing, and IPFS API access all run client-side
-- there is no app server storing content or mediating transactions
+- chain access, wallet/passkey session access, signing, and IPFS API access all run client-side
+- there is no app server storing forum content or mediating transactions
+- an optional Virto passkey flow can talk to an external Virto federation/signing backend for WebAuthn auth and extrinsic signing
 
 ### Why this matters
 
 This architecture keeps the dapp close to the underlying protocol:
 
 - wallet access stays in the browser
+- optional passkey auth can also stay browser-initiated while delegating WebAuthn/session handling to Virto services
 - content goes straight to IPFS
 - extrinsics go straight to the chain node
 - indexed reads come straight from the indexer
@@ -89,7 +91,7 @@ Most application logic lives in `src/lib/services/**`.
 
 Key services:
 
-- `accounts.svelte.ts` — wallet/extension account discovery and selection
+- `accounts.svelte.ts` — extension account discovery plus optional Virto passkey session account selection
 - `balances.svelte.ts` — balance watching for injected accounts
 - `connections.svelte.ts` — chain, indexer, and IPFS daemon startup/status
 - `indexer.svelte.ts` — websocket client for indexed queries and subscriptions
@@ -99,7 +101,7 @@ Key services:
 - `content-images.ts` — shared image mixin encoding/decoding, JPEG conversion, mipmap generation, and IPFS preview loading used by both profile and forum content flows
 - `ipfs.ts` — direct Kubo HTTP API helpers for `/api/v0/id`, `/api/v0/add`, and `/api/v0/cat`
 - `reactions.ts` — fetch and submit reactions
-- `chain-signing.ts` — generic extension signing/block-inclusion helper
+- `chain-signing.ts` — provider-aware signing helper for both extension and Virto passkey accounts
 
 These services use Svelte 5 runes-style `$state` objects as shared client-side stores.
 
@@ -108,6 +110,7 @@ These services use Svelte 5 runes-style `$state` objects as shared client-side s
 The UI talks to protocol services:
 
 - **Polkadot extension** via `@polkadot/extension-dapp`
+- **Virto passkey SDK** via a browser-loaded ESM module for WebAuthn auth and hex extrinsic signing
 - **Substrate node** via `@polkadot/api`
 - **Indexer** via raw websocket JSON-RPC-like messages
 - **IPFS** via the local Kubo HTTP API
@@ -137,7 +140,11 @@ On unmount it stops:
 - calls `web3Enable('Kusama Forum')`
 - fetches injected accounts with `web3Accounts()`
 - filters to compatible 32-byte Substrate accounts
+- restores any persisted Virto passkey session from local storage
+- merges extension accounts with the optional Virto session account into one picker
 - restores the last selected account from local storage (`kusama-forum.active-account`)
+
+The account picker in `src/lib/components/AccountSelector.svelte` also exposes a Virto passkey panel where the user can configure the Virto server/provider URLs, register with WebAuthn, sign in with a passkey, and disconnect that session.
 
 ### Connection bootstrap
 
@@ -731,7 +738,7 @@ The UI does not maintain its own auth system.
 
 Authorization is derived from:
 
-- the selected extension account
+- the selected account provider session (extension or Virto)
 - the on-chain owner of the content item
 - item flags indicating revisionability
 
@@ -881,7 +888,8 @@ A quick map of the most important files:
 - `src/lib/services/content-images.ts` — shared content/profile image helper logic
 - `src/routes/forum-admin/+page.svelte` — forum admin page backed by account-content storage; each forum row links directly to its forum page, keeps item IDs hidden from the list, and starts with a square forum image thumbnail when available
 - `src/lib/services/reactions.ts` — reaction load/save logic
-- `src/lib/services/chain-signing.ts` — generic extension signing helper
+- `src/lib/services/chain-signing.ts` — provider-aware signing helper for extension and Virto passkey accounts
+- `src/lib/services/virto-connect.ts` — Virto SDK loading, passkey registration/login, session persistence, and hex-extrinsic signing
 
 ### Main UI features
 
@@ -930,4 +938,4 @@ That sequence is representative of almost every feature in the app.
 
 ## In one sentence
 
-This dapp is a **static, browser-only Svelte client** that uses a **Polkadot extension for signing**, a **Substrate node for canonical state**, an **indexer for history/discovery/live updates**, and a **local Kubo IPFS daemon over its HTTP API for content storage and retrieval**.
+This dapp is a **static, browser-only Svelte client** that uses either a **Polkadot extension or optional Virto passkey flow for signing**, a **Substrate node for canonical state**, an **indexer for history/discovery/live updates**, and a **local Kubo IPFS daemon over its HTTP API for content storage and retrieval**.

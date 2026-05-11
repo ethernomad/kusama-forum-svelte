@@ -1,7 +1,9 @@
-import type { InjectedAccount } from './accounts.svelte';
+import { isVirtoAccount, type InjectedAccount } from './accounts.svelte';
+import { signExtrinsicWithVirto } from './virto-connect';
 
 export type SignableExtrinsic = {
-	signAndSend: Function;
+	signAndSend: (...args: unknown[]) => Promise<() => void>;
+	toHex?: () => string;
 };
 
 export async function signAndWaitForInBlock(
@@ -12,6 +14,15 @@ export async function signAndWaitForInBlock(
 	if (typeof window === 'undefined') {
 		throw new Error('Signing is only available in the browser.');
 	}
+
+	if (isVirtoAccount(account)) {
+		if (typeof extrinsic.toHex !== 'function') {
+			throw new Error('This extrinsic cannot be serialized for Virto signing.');
+		}
+		await signExtrinsicWithVirto(account, extrinsic.toHex());
+		return;
+	}
+
 	const { web3FromSource } = await import('@polkadot/extension-dapp');
 	const injector = await web3FromSource(String(account.meta.source ?? ''));
 	await new Promise<void>((resolve, reject) => {
