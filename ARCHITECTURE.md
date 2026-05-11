@@ -673,11 +673,12 @@ The item viewer integrates this same trust graph so title and metadata remain vi
 It works by:
 
 - periodically reconciling the set of known accounts
-- fetching balances directly from `system.account`
+- fetching each watched account's initial balance directly from chain state via `system.account`
+- treating chain state as the authoritative source for the current balance, even when the account has no transfer history yet
 - subscribing to indexer events keyed by raw `account_id`
-- refetching the balance when a relevant event appears
+- using those events as refresh triggers that refetch `system.account`
 
-This is not central to content publishing, but it improves wallet/account UX in the selector.
+This is not central to content publishing, but it improves wallet/account UX in the selector and ensures development accounts with prefunded balances appear correctly before any transfer event occurs.
 
 ---
 

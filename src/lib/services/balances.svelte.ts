@@ -129,28 +129,28 @@ export function startAccountBalanceWatcher() {
 			return;
 		}
 
-		if (api !== lastApi) {
+		const apiChanged = api !== lastApi;
+		if (apiChanged) {
 			lastApi = api;
 			updateTokenFormat(api);
 			pendingInitialFetches = new Set(addresses);
 		}
 
+		const previousWatched = watchedAddresses;
 		const nextWatched = new Set(addresses);
-		let watchedChanged = nextWatched.size !== watchedAddresses.size;
-		if (!watchedChanged) {
-			for (const address of nextWatched) {
-				if (!watchedAddresses.has(address)) {
-					watchedChanged = true;
-					break;
-				}
-			}
-		}
 		watchedAddresses = nextWatched;
 
 		for (const address of addresses) {
 			if (!keyHexToAddressKeyHex(address)) continue;
-			if (!accountBalances.byAddress[address]) setLoading(address);
-			if (pendingInitialFetches.has(address)) {
+			const existingBalance = accountBalances.byAddress[address];
+			const needsInitialStateFetch =
+				pendingInitialFetches.has(address) ||
+				!previousWatched.has(address) ||
+				!existingBalance ||
+				existingBalance.loading ||
+				!!existingBalance.error;
+			if (!existingBalance) setLoading(address);
+			if (needsInitialStateFetch) {
 				pendingInitialFetches.delete(address);
 				void fetchBalance(api, address);
 			}
@@ -180,7 +180,9 @@ export function startAccountBalanceWatcher() {
 			);
 		}
 
-		accountBalances.status = 'Watching account balance events';
+		accountBalances.status = apiChanged
+			? 'Loaded account balances from chain state'
+			: 'Watching account balance events';
 	};
 
 	const keyHexToAddressKeyHex = (address: string) => {
