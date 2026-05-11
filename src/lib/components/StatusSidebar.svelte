@@ -7,7 +7,7 @@
 	const goBack = () => history.back();
 	const goForward = () => history.forward();
 
-	type MenuHref = '/my-profile' | '/item_id' | '/forum-admin';
+	type MenuHref = '/my-profile' | '/trusted-accounts' | '/item_id' | '/forum-admin';
 
 	type MenuItem = {
 		href: MenuHref;
@@ -20,6 +20,11 @@
 			href: '/my-profile',
 			label: 'My profile',
 			description: 'Edit your account profile and avatar'
+		},
+		{
+			href: '/trusted-accounts',
+			label: 'Trusted Accounts',
+			description: 'Review and remove accounts you trust'
 		},
 		{
 			href: '/item_id',

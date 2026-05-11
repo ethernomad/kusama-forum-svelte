@@ -74,6 +74,7 @@ Important routes:
 - `src/routes/+layout.svelte` — bootstraps global connections/watchers and renders the sidebar
 - `src/routes/+page.svelte` — home page, currently the profile page
 - `src/routes/my-profile/+page.svelte` — profile editor/view
+- `src/routes/trusted-accounts/+page.svelte` — trusted-account manager backed by trusted-accounts chain storage and trust/untrust extrinsics
 - `src/routes/forum-admin/+page.svelte` — list forums from `pallet-account-content` and link to forum creation
 - `src/routes/create-forum/+page.svelte` — create a top-level forum item
 - `src/routes/item_id/+page.svelte` — item lookup form
@@ -94,6 +95,7 @@ Key services:
 - `indexer.svelte.ts` — websocket client for indexed queries and subscriptions
 - `content.ts` — content encoding/decoding, loading, and publishing
 - `profile.ts` — profile-specific encoding/loading/publishing
+- `trusted-accounts.ts` — trusted-account chain reads, one-hop trust-graph evaluation, and trust/untrust submission helpers
 - `content-images.ts` — shared image mixin encoding/decoding, JPEG conversion, mipmap generation, and IPFS preview loading used by both profile and forum content flows
 - `ipfs.ts` — direct Kubo HTTP API helpers for `/api/v0/id`, `/api/v0/add`, and `/api/v0/cat`
 - `reactions.ts` — fetch and submit reactions
@@ -181,7 +183,7 @@ There is no in-browser Helia or libp2p node anymore. All IPFS reads and writes g
 The sidebar component, `src/lib/components/StatusSidebar.svelte`, reads this state and shows:
 
 - a browser-style navigation pane with Back and Forward buttons above the account picker
-- a styled sidebar menu with permanent navigation links like My profile, Item ID, and Forum admin
+- a styled sidebar menu with permanent navigation links like My profile, Trusted Accounts, Item ID, and Forum admin
 - a separate status pane with chain health, indexer health, and IPFS health
 - a link to the dedicated IPFS status page
 - Skeleton-styled form controls across the main publishing and editing flows (`input`, `textarea`, `select`, and `btn` classes) for consistent dapp theming
@@ -337,6 +339,8 @@ That is an important architectural choice:
 ## Reading data: how the viewer works
 
 The generic viewer route is `src/routes/item_id/[item_id]/+page.svelte`.
+
+In addition to loading content, the viewer also resolves author profile metadata, computes direct + one-hop trust in the frontend from `TrustedAccounts` storage, renders a clickable shield for trust/untrust, and hides only the body/image when the author falls outside the active account's extended trust graph.
 
 ### Load sequence
 
@@ -646,6 +650,22 @@ Right now reactions are shown under comments via `CommentItem.svelte`.
 
 ---
 
+## Trusted accounts
+
+Trusted accounts are implemented in the frontend without using pallet RPC helpers.
+
+`trusted-accounts.ts` reads:
+
+- `TrustedAccounts::AccountTrustedAccountListCount`
+- `TrustedAccounts::AccountTrustedAccountList`
+- `TrustedAccounts::AccountTrustedAccountIndex`
+
+and computes one-hop extended trust in the browser by checking whether any directly trusted account directly trusts the viewed author.
+
+The dedicated page at `src/routes/trusted-accounts/+page.svelte` lists all directly trusted accounts for the active account and allows removals via `TrustedAccounts::untrust_account`.
+
+The item viewer integrates this same trust graph so title and metadata remain visible, while image/body rendering is restricted for authors outside the extended trust graph.
+
 ## Account balances
 
 `balances.svelte.ts` watches balances for all injected accounts.
@@ -865,7 +885,8 @@ A quick map of the most important files:
 ### Main UI features
 
 - `src/lib/components/MyProfilePage.svelte`
-- `src/lib/components/ForumCategories.svelte`
+- `src/routes/trusted-accounts/+page.svelte`
+- `src/lib/components/ForumCategories.svelte`},{
 - `src/lib/components/CategoryForumPosts.svelte`
 - `src/lib/components/Comments.svelte`
 - `src/lib/components/CommentItem.svelte`
