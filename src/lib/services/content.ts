@@ -6,7 +6,13 @@ import type { InjectedAccount } from './accounts.svelte';
 import { signAndWaitForInBlock, type SignableExtrinsic } from './chain-signing';
 import { buildImagePayload, decodeImageMixin, previewDataUrlForImageMixin } from './content-images';
 import { getIndexedEvents } from './indexer.svelte';
-import { digestHexToCid, fetchIpfsDigestBytes, uploadIpfsDigest } from './ipfs';
+import {
+	digestHexToBase64Cid,
+	digestHexToCid,
+	fetchIpfsDigestBytes,
+	multihashBytesToBase64Cid,
+	uploadIpfsDigest
+} from './ipfs';
 import { resolvePreparedValue } from './prepared-publish';
 
 const { Reader, Writer } = protobuf;
@@ -397,7 +403,7 @@ async function deriveItemId(accountAddress: string, nonce: Uint8Array): Promise<
 
 export function ipfsDigestHexToCid(value: string | null): string {
 	if (!value) return '—';
-	return digestHexToCid(value).toString();
+	return digestHexToBase64Cid(value);
 }
 
 async function indexerRequest<T>(_method: string, payload: Record<string, unknown>): Promise<T> {
@@ -535,6 +541,18 @@ function mixinName(mixinId: number): string {
 	return 'Unknown mixin';
 }
 
+function formatImageDebugData(payload: ReturnType<typeof decodeImageMixin>) {
+	const formatHash = (hash: Uint8Array<ArrayBufferLike>) =>
+		hash.length ? multihashBytesToBase64Cid(hash) : '—';
+
+	return {
+		ipfsHash: formatHash(payload.ipfsHash),
+		mipmapLevel: payload.mipmapLevel.map((level) => ({
+			ipfsHash: formatHash(level.ipfsHash)
+		}))
+	};
+}
+
 function decodeMixinDebug(mixin: MixinPayload): DecodedMixinDebug {
 	let data: unknown;
 	try {
@@ -542,7 +560,7 @@ function decodeMixinDebug(mixin: MixinPayload): DecodedMixinDebug {
 		else if (mixin.mixinId === TITLE_MIXIN_ID) data = decodeTitleMixin(mixin.payload);
 		else if (mixin.mixinId === BODY_TEXT_MIXIN_ID) data = decodeBodyTextMixin(mixin.payload);
 		else if (mixin.mixinId === PROFILE_MIXIN_ID) data = decodeProfileMixin(mixin.payload);
-		else if (mixin.mixinId === IMAGE_MIXIN_ID) data = decodeImageMixin(mixin.payload);
+		else if (mixin.mixinId === IMAGE_MIXIN_ID) data = formatImageDebugData(decodeImageMixin(mixin.payload));
 		else data = { rawHex: toHex(mixin.payload) };
 	} catch (error) {
 		data = { error: error instanceof Error ? error.message : String(error) };

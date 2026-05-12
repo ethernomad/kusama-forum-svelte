@@ -1,5 +1,6 @@
 import { CID } from 'multiformats/cid';
-import { create as createDigest } from 'multiformats/hashes/digest';
+import { base64 } from 'multiformats/bases/base64';
+import { create as createDigest, decode as decodeDigest } from 'multiformats/hashes/digest';
 
 type IpfsIdResponse = {
 	ID: string;
@@ -24,6 +25,7 @@ export type IpfsDaemonInfo = {
 };
 
 const DEFAULT_IPFS_API_URL = 'http://127.0.0.1:5001';
+const DAG_PB_CODEC = 0x70;
 
 export function ipfsApiUrl(): string {
 	return import.meta.env.VITE_IPFS_API_URL?.trim() || DEFAULT_IPFS_API_URL;
@@ -37,6 +39,14 @@ export function digestHexToCid(hexValue: string): CID {
 export function cidToDigestHex(cid: CID | string): string {
 	const parsed = typeof cid === 'string' ? CID.parse(cid) : cid;
 	return toHex(parsed.multihash.digest);
+}
+
+export function digestHexToBase64Cid(hexValue: string): string {
+	return CID.createV1(DAG_PB_CODEC, createDigest(0x12, hexToBytes(hexValue))).toString(base64);
+}
+
+export function multihashBytesToBase64Cid(multihashBytes: Uint8Array): string {
+	return CID.createV1(DAG_PB_CODEC, decodeDigest(multihashBytes)).toString(base64);
 }
 
 export async function ipfsDaemonId(): Promise<IpfsDaemonInfo> {

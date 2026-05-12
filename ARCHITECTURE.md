@@ -735,7 +735,7 @@ The generic item viewer renders specialized sub-components depending on decoded 
 - chain owner/flags/latest revision
 - parents from indexed `PublishItem`
 - revision metadata from indexed `PublishRevision`
-- raw/decoded mixins from IPFS payload bytes
+- raw/decoded mixins from IPFS payload bytes, with image IPFS hashes shown as standard base64 CID strings in the debug view
 
 That route effectively documents the protocol state for a single item.
 
