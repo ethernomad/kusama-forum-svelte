@@ -5,8 +5,8 @@
 	import ContentTabs from '$lib/components/ContentTabs.svelte';
 	import { formatShortAddress, injectedAccounts } from '$lib/services/accounts.svelte';
 	import {
-		accountAddressToHex,
 		canEditContent,
+		canRetractContent,
 		loadContentByItemId,
 		publishContentRevision,
 		retractItem,
@@ -27,21 +27,11 @@
 	let selectedImagePreview: string | null = $state(null);
 	let removeImage = $state(false);
 	let loadRequest = 0;
-	const RETRACTABLE_ITEM_FLAGS = 0x02;
 
 	const itemId = $derived(page.params.item_id);
 	const activeAccount = $derived(injectedAccounts.activeAccount);
 	const canEdit = $derived(canEditContent(content, activeAccount));
-	const canRetract = $derived.by(() => {
-		const value = content;
-		return (
-			!!value?.ownerHex &&
-			!!activeAccount &&
-			value.ownerHex === accountAddressToHex(activeAccount.address) &&
-			value.flags != null &&
-			(value.flags & RETRACTABLE_ITEM_FLAGS) !== 0
-		);
-	});
+	const canRetract = $derived(canRetractContent(content, activeAccount));
 	const categoryItemId = $derived.by(() => {
 		const value = content;
 		return value?.contentType === 'forumPost' ? (value.latestLinks[0] ?? '') : '';

@@ -25,6 +25,7 @@ type ItemMessage = {
 };
 
 export const REVISIONABLE_ITEM_FLAGS = 0x01;
+export const RETRACTABLE_ITEM_FLAGS = 0x02;
 const PROFILE_ITEM_FLAGS = REVISIONABLE_ITEM_FLAGS;
 const PROFILE_CONTENT_TYPE_ID = 4;
 const FORUM_CONTENT_TYPE_ID = 5;
@@ -37,10 +38,10 @@ const BODY_TEXT_MIXIN_ID = 0x2d382044;
 const IMAGE_MIXIN_ID = 0x045eee8c;
 const PROFILE_MIXIN_ID = 0xbeef2144;
 const DEFAULT_LANGUAGE_TAG = 'en';
-const FORUM_ITEM_FLAGS = REVISIONABLE_ITEM_FLAGS | 0x02;
-const CATEGORY_ITEM_FLAGS = REVISIONABLE_ITEM_FLAGS | 0x02;
-const FORUM_POST_ITEM_FLAGS = REVISIONABLE_ITEM_FLAGS | 0x02;
-const COMMENT_ITEM_FLAGS = REVISIONABLE_ITEM_FLAGS | 0x02;
+const FORUM_ITEM_FLAGS = REVISIONABLE_ITEM_FLAGS | RETRACTABLE_ITEM_FLAGS;
+const CATEGORY_ITEM_FLAGS = REVISIONABLE_ITEM_FLAGS | RETRACTABLE_ITEM_FLAGS;
+const FORUM_POST_ITEM_FLAGS = REVISIONABLE_ITEM_FLAGS | RETRACTABLE_ITEM_FLAGS;
+const COMMENT_ITEM_FLAGS = REVISIONABLE_ITEM_FLAGS | RETRACTABLE_ITEM_FLAGS;
 const RETRACTED_ITEM_FLAGS = 0x04;
 const ITEM_ID_NAMESPACE = 1000;
 
@@ -751,6 +752,19 @@ export function canEditContent(
 		!!activeAccount &&
 		content.ownerHex === accountAddressToHex(activeAccount.address) &&
 		isContentRevisionable(content)
+	);
+}
+
+export function canRetractContent(
+	content: Pick<LoadedContent, 'ownerHex' | 'flags'> | null,
+	activeAccount: InjectedAccount | null
+): boolean {
+	return (
+		!!content?.ownerHex &&
+		!!activeAccount &&
+		content.ownerHex === accountAddressToHex(activeAccount.address) &&
+		content.flags != null &&
+		(content.flags & RETRACTABLE_ITEM_FLAGS) !== 0
 	);
 }
 

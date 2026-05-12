@@ -11,9 +11,11 @@
 	} from '$lib/services/indexer.svelte';
 	import {
 		canEditContent,
+		canRetractContent,
 		fetchContentRevisions,
 		loadContentByItemId,
 		publishContentRevision,
+		retractItem,
 		type ContentRevisionMeta,
 		type ForumComment
 	} from '$lib/services/content';
@@ -24,6 +26,7 @@
 	let editOpen = $state(false);
 	let editBody = $state('');
 	let editSaving = $state(false);
+	let retracting = $state(false);
 	let editError = $state('');
 	let revisions = $state<ContentRevisionMeta[]>([]);
 	let selectedRevisionId = $state<number | null>(null);
@@ -34,6 +37,7 @@
 		comment.createdAtMs == null ? '—' : new Date(comment.createdAtMs).toLocaleString()
 	);
 	const canEdit = $derived(canEditContent(comment, injectedAccounts.activeAccount));
+	const canRetract = $derived(canRetractContent(comment, injectedAccounts.activeAccount));
 	const latestRevisionId = $derived(comment.latestRevisionId ?? comment.revisionId);
 	const editUnchanged = $derived(editBody.trim() === comment.bodyText.trim());
 
@@ -84,6 +88,21 @@
 			editError = value instanceof Error ? value.message : String(value);
 		} finally {
 			editSaving = false;
+		}
+	}
+
+	async function retractComment() {
+		if (!connections.api || !injectedAccounts.activeAccount || !canRetract) return;
+		editError = '';
+		retracting = true;
+		try {
+			await retractItem(connections.api, injectedAccounts.activeAccount, comment.itemIdHex);
+			editOpen = false;
+			await onChanged();
+		} catch (value) {
+			editError = value instanceof Error ? value.message : String(value);
+		} finally {
+			retracting = false;
 		}
 	}
 
@@ -185,8 +204,23 @@
 	{/if}
 	<div class="mt-3 flex flex-wrap items-center gap-2">
 		{#if canEdit}
-			<button class="variant-soft btn-sm" type="button" onclick={toggleEdit} disabled={editSaving}>
+			<button
+				class="variant-soft btn-sm"
+				type="button"
+				onclick={toggleEdit}
+				disabled={editSaving || retracting}
+			>
 				{editOpen ? 'Cancel edit' : 'Edit'}
+			</button>
+		{/if}
+		{#if canRetract}
+			<button
+				class="variant-soft btn-sm"
+				type="button"
+				onclick={() => void retractComment()}
+				disabled={editSaving || retracting}
+			>
+				{retracting ? 'Retracting…' : 'Retract'}
 			</button>
 		{/if}
 	</div>
