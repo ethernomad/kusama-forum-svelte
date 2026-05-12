@@ -384,6 +384,21 @@
 				<p class="mt-2 text-sm text-surface-700-300">Location: {content.profileLocation}</p>
 			{/if}
 
+
+			{#if canRenderProtectedContent && content.imagePreviewDataUrl}
+				<img
+					src={content.imagePreviewDataUrl}
+					alt={content.title || 'Content image'}
+					class="mt-6 max-h-80 rounded-xl object-cover"
+				/>
+			{:else if !canRenderProtectedContent && content.imagePreviewDataUrl}
+				<div
+					class="mt-6 rounded-xl border border-dashed border-surface-300-700 p-6 text-sm text-surface-700-300"
+				>
+					Image hidden because the author is outside your extended trust graph.
+				</div>
+			{/if}
+
 			{#if content.contentType === 'profile'}
 				<div class="mt-6 grid gap-4 md:grid-cols-2">
 					<div class="rounded-xl border border-surface-300-700 p-4">
@@ -441,20 +456,6 @@
 							</ul>
 						{/if}
 					</div>
-				</div>
-			{/if}
-
-			{#if canRenderProtectedContent && content.imagePreviewDataUrl}
-				<img
-					src={content.imagePreviewDataUrl}
-					alt={content.title || 'Content image'}
-					class="mt-6 max-h-80 rounded-xl object-cover"
-				/>
-			{:else if !canRenderProtectedContent && content.imagePreviewDataUrl}
-				<div
-					class="mt-6 rounded-xl border border-dashed border-surface-300-700 p-6 text-sm text-surface-700-300"
-				>
-					Image hidden because the author is outside your extended trust graph.
 				</div>
 			{/if}
 
