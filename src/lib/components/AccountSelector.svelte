@@ -85,9 +85,9 @@
 				<span aria-hidden="true" class="text-xs">▾</span>
 			</Menu.Trigger>
 
-			<Menu.Positioner>
+			<Menu.Positioner class="z-50">
 				<Menu.Content
-					class="w-80 rounded-xl border border-surface-200-800 bg-surface-50-950 p-1 shadow-xl"
+					class="z-50 w-80 rounded-xl border border-surface-200-800 bg-surface-50-950 p-1 shadow-xl"
 				>
 					<div class="px-3 py-2">
 						<p class="text-xs font-medium">Available accounts</p>
