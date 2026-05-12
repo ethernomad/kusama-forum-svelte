@@ -716,6 +716,7 @@ The generic item viewer renders specialized sub-components depending on decoded 
 
 - incrementally loads posts linked to the category
 - resolves each post author's profile metadata to show a square avatar thumbnail beside the post title on category pages
+- shows each post's publish timestamp using the browser's local timezone on category pages
 - lets any connected account create a new post
 
 ### Forum post and comment

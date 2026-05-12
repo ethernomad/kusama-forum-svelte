@@ -81,6 +81,10 @@
 		return (authorLabel(post)[0] ?? post.title.trim()[0] ?? '?').toUpperCase();
 	}
 
+	function formatPublishedAt(post: ForumPost): string {
+		return post.createdAtMs == null ? 'Unknown publish time' : new Date(post.createdAtMs).toLocaleString();
+	}
+
 	async function addPost() {
 		if (!connections.api || !connections.ipfsConnected || !injectedAccounts.activeAccount) return;
 		error = '';
@@ -189,6 +193,9 @@
 								</a>
 							</p>
 						{/if}
+						<p class="mt-1 text-xs text-surface-700-300">
+							Published {formatPublishedAt(post)}
+						</p>
 					</div>
 				</div>
 			</article>
