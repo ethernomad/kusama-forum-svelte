@@ -231,9 +231,8 @@
 			{:else if revision}
 				<div class="mt-4 grid gap-4 md:grid-cols-2">
 					<div>
-						<p class="text-xs text-surface-700-300 uppercase">IPFS hash</p>
-						<code class="break-all">{revision.ipfsHash}</code>
-						<p class="mt-1 text-xs break-all text-surface-700-300">{revision.cid}</p>
+						<p class="text-xs text-surface-700-300 uppercase">IPFS CID</p>
+						<code class="break-all">{revision.cid}</code>
 					</div>
 					<div>
 						<p class="text-xs text-surface-700-300 uppercase">Content type</p>
