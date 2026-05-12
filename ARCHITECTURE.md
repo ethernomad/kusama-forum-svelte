@@ -584,7 +584,7 @@ So category membership is inferred through indexed link relationships, not direc
 - keep only valid comments
 - recurse for each comment to build nested replies
 
-Comment cards render the comment timestamp in the browser's local timezone instead of showing chain/block metadata in the header. When multiple comment revisions exist, the card shows a revision dropdown and loads the selected revision body while also pointing reactions at that selected revision. Comments are published with both revisionable and retractable flags. If the active account owns a revisionable comment, the card also shows an inline edit form that republishes the comment body via `publishContentRevision()` while preserving its parent relationship. If the active account owns a retractable comment, the inline action row also exposes a retract button next to Edit.
+Comment cards render the commenter's profile image on the left when available, fall back to an initial-based avatar placeholder otherwise, and show the comment timestamp below the comment body in the browser's local timezone. When multiple comment revisions exist, the card shows a revision dropdown and loads the selected revision body while also pointing reactions at that selected revision. Comments are published with both revisionable and retractable flags. If the active account owns a revisionable comment, the card also shows an inline edit form that republishes the comment body via `publishContentRevision()` while preserving its parent relationship. If the active account owns a retractable comment, the inline action row also exposes a retract button next to Edit.
 
 This makes the comment system a true item tree reconstructed from indexed publish events.
 

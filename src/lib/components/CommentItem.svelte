@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import CommentForm from '$lib/components/CommentForm.svelte';
 	import CommentItem from '$lib/components/CommentItem.svelte';
 	import Reactions from '$lib/components/Reactions.svelte';
@@ -9,6 +10,10 @@
 		itemIdIndexerKey,
 		subscribeIndexerEvents
 	} from '$lib/services/indexer.svelte';
+	import {
+		loadTrustedAccountSummary,
+		type TrustedAccountSummary
+	} from '$lib/services/trusted-accounts';
 	import {
 		canEditContent,
 		canRetractContent,
@@ -32,6 +37,12 @@
 	let selectedRevisionId = $state<number | null>(null);
 	let viewedBody = $state('');
 	let switchingRevision = $state(false);
+	let author = $state<TrustedAccountSummary | null>(null);
+
+	const authorLabel = $derived(
+		author?.displayName?.replace(/'s account$/i, '').trim() || 'Unknown author'
+	);
+	const authorInitial = $derived((authorLabel[0] ?? viewedBody.trim()[0] ?? '?').toUpperCase());
 
 	const commentTimestamp = $derived(
 		comment.createdAtMs == null ? '—' : new Date(comment.createdAtMs).toLocaleString()
@@ -137,99 +148,150 @@
 		const unsubscribe = subscribeIndexerEvents(itemIdIndexerKey(itemIdHex), handleIndexerMessage);
 		return unsubscribe;
 	});
+
+	$effect(() => {
+		const ownerHex = comment.ownerHex;
+		if (!connections.api || !ownerHex) {
+			author = null;
+			return;
+		}
+		let cancelled = false;
+		void loadTrustedAccountSummary(connections.api, ownerHex)
+			.then((summary) => {
+				if (!cancelled) author = summary;
+			})
+			.catch(() => {
+				if (!cancelled) author = null;
+			});
+		return () => {
+			cancelled = true;
+		};
+	});
 </script>
 
 <article class="rounded-lg border border-surface-200-800 bg-surface-100-900 p-4">
-	<div class="flex flex-wrap items-center justify-between gap-2 text-xs text-surface-700-300">
-		<span>{commentTimestamp}</span>
-	</div>
-	{#if editOpen}
-		<form
-			class="mt-3 space-y-3"
-			onsubmit={(event) => {
-				event.preventDefault();
-				void saveEdit();
-			}}
-		>
-			<label class="block space-y-2 text-sm font-semibold">
-				<span>Edit comment</span>
-				<textarea
-					class="textarea min-h-24 w-full"
-					bind:value={editBody}
-					placeholder="Edit your comment…"
-					disabled={editSaving}
-					required
-				></textarea>
-			</label>
-			{#if editError}<p class="text-sm text-red-300">{editError}</p>{/if}
-			<div class="flex flex-wrap items-center gap-2">
-				<button
-					class="variant-filled btn"
-					type="submit"
-					disabled={editSaving || !connections.ipfsConnected || !editBody.trim() || editUnchanged}
-					>{editSaving ? 'Saving…' : 'Save edit'}</button
-				>
-				<button class="variant-soft btn" type="button" disabled={editSaving} onclick={toggleEdit}
-					>Cancel</button
-				>
+	<div class="flex items-start gap-3">
+		{#if author?.imagePreviewDataUrl}
+			<img
+				src={author.imagePreviewDataUrl}
+				alt={`${authorLabel} profile picture`}
+				class="h-10 w-10 flex-none rounded-full object-cover"
+			/>
+		{:else}
+			<div
+				class="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-surface-200-800 text-sm font-semibold text-surface-700-300"
+				aria-hidden="true"
+			>
+				{authorInitial}
 			</div>
-		</form>
-	{:else}
-		<div class="mt-3 text-sm whitespace-pre-wrap">{viewedBody}</div>
-	{/if}
-	{#if revisions.length > 1}
-		<label class="mt-3 block space-y-1 text-xs text-surface-700-300">
-			<span>Comment revision</span>
-			<select
-				class="select max-w-xs"
-				value={selectedRevisionId ?? ''}
-				disabled={switchingRevision}
-				onchange={(event) => {
-					const revisionId = Number(event.currentTarget.value);
-					if (Number.isFinite(revisionId)) void selectRevision(revisionId);
-				}}
-			>
-				{#each revisions as revision (revision.revisionId)}
-					<option value={revision.revisionId}>
-						Revision {revision.revisionId}{revision.revisionId === latestRevisionId
-							? ' (latest)'
-							: ''}
-					</option>
-				{/each}
-			</select>
-		</label>
-	{/if}
-	{#if selectedRevisionId != null}
-		<Reactions itemIdHex={comment.itemIdHex} revisionId={selectedRevisionId} />
-	{/if}
-	<div class="mt-3 flex flex-wrap items-center gap-2">
-		{#if canEdit}
-			<button
-				class="variant-soft btn-sm"
-				type="button"
-				onclick={toggleEdit}
-				disabled={editSaving || retracting}
-			>
-				{editOpen ? 'Cancel edit' : 'Edit'}
-			</button>
 		{/if}
-		{#if canRetract}
-			<button
-				class="variant-soft btn-sm"
-				type="button"
-				onclick={() => void retractComment()}
-				disabled={editSaving || retracting}
-			>
-				{retracting ? 'Retracting…' : 'Retract'}
-			</button>
-		{/if}
-	</div>
-	<CommentForm parentItemIdHex={comment.itemIdHex} onPublished={onChanged} label="Reply" />
-	{#if comment.replies.length}
-		<div class="mt-4 space-y-3 border-l border-surface-300-700 pl-4">
-			{#each comment.replies as reply (reply.itemIdHex)}
-				<CommentItem comment={reply} {onChanged} />
-			{/each}
+		<div class="min-w-0 flex-1">
+			{#if author?.profileItemIdHex}
+				<a
+					class="text-sm font-semibold hover:underline"
+					href={resolve(`/item_id/${encodeURIComponent(author.profileItemIdHex)}`)}
+				>
+					{authorLabel}
+				</a>
+			{:else}
+				<p class="text-sm font-semibold">{authorLabel}</p>
+			{/if}
+			{#if editOpen}
+				<form
+					class="mt-3 space-y-3"
+					onsubmit={(event) => {
+						event.preventDefault();
+						void saveEdit();
+					}}
+				>
+					<label class="block space-y-2 text-sm font-semibold">
+						<span>Edit comment</span>
+						<textarea
+							class="textarea min-h-24 w-full"
+							bind:value={editBody}
+							placeholder="Edit your comment…"
+							disabled={editSaving}
+							required
+						></textarea>
+					</label>
+					{#if editError}<p class="text-sm text-red-300">{editError}</p>{/if}
+					<div class="flex flex-wrap items-center gap-2">
+						<button
+							class="variant-filled btn"
+							type="submit"
+							disabled={editSaving || !connections.ipfsConnected || !editBody.trim() || editUnchanged}
+						>
+							{editSaving ? 'Saving…' : 'Save edit'}
+						</button>
+						<button
+							class="variant-soft btn"
+							type="button"
+							disabled={editSaving}
+							onclick={toggleEdit}
+						>
+							Cancel
+						</button>
+					</div>
+				</form>
+			{:else}
+				<div class="mt-2 text-sm whitespace-pre-wrap">{viewedBody}</div>
+			{/if}
+			<p class="mt-2 text-xs text-surface-700-300">{commentTimestamp}</p>
+			{#if revisions.length > 1}
+				<label class="mt-3 block space-y-1 text-xs text-surface-700-300">
+					<span>Comment revision</span>
+					<select
+						class="select max-w-xs"
+						value={selectedRevisionId ?? ''}
+						disabled={switchingRevision}
+						onchange={(event) => {
+							const revisionId = Number(event.currentTarget.value);
+							if (Number.isFinite(revisionId)) void selectRevision(revisionId);
+						}}
+					>
+						{#each revisions as revision (revision.revisionId)}
+							<option value={revision.revisionId}>
+								Revision {revision.revisionId}{revision.revisionId === latestRevisionId
+									? ' (latest)'
+									: ''}
+							</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
+			{#if selectedRevisionId != null}
+				<Reactions itemIdHex={comment.itemIdHex} revisionId={selectedRevisionId} />
+			{/if}
+			<div class="mt-3 flex flex-wrap items-center gap-2">
+				{#if canEdit}
+					<button
+						class="variant-soft btn-sm"
+						type="button"
+						onclick={toggleEdit}
+						disabled={editSaving || retracting}
+					>
+						{editOpen ? 'Cancel edit' : 'Edit'}
+					</button>
+				{/if}
+				{#if canRetract}
+					<button
+						class="variant-soft btn-sm"
+						type="button"
+						onclick={() => void retractComment()}
+						disabled={editSaving || retracting}
+					>
+						{retracting ? 'Retracting…' : 'Retract'}
+					</button>
+				{/if}
+			</div>
+			<CommentForm parentItemIdHex={comment.itemIdHex} onPublished={onChanged} label="Reply" />
+			{#if comment.replies.length}
+				<div class="mt-4 space-y-3 border-l border-surface-300-700 pl-4">
+					{#each comment.replies as reply (reply.itemIdHex)}
+						<CommentItem comment={reply} {onChanged} />
+					{/each}
+				</div>
+			{/if}
 		</div>
-	{/if}
+	</div>
 </article>
