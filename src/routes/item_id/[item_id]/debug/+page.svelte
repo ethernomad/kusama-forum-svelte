@@ -1,14 +1,15 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { resolve } from '$app/paths';
 	import ContentTabs from '$lib/components/ContentTabs.svelte';
 	import { injectedAccounts } from '$lib/services/accounts.svelte';
 	import {
 		canEditContent,
+		loadContentByItemId,
 		loadContentItemDebug,
 		loadRevisionDebug,
 		shortHex,
 		type ContentItemDebug,
+		type LoadedContent,
 		type RevisionDebug
 	} from '$lib/services/content';
 	import { connections } from '$lib/services/connections.svelte';
@@ -24,8 +25,10 @@
 	let error = $state('');
 	let revisionError = $state('');
 	let debug: ContentItemDebug | null = $state(null);
+	let content: LoadedContent | null = $state(null);
 	let revision: RevisionDebug | null = $state(null);
 	let selectedRevisionId = $state('');
+	let copied = $state(false);
 	let requestId = 0;
 	let revisionRequestId = 0;
 
@@ -36,10 +39,24 @@
 		return flags != null && (flags & bit) !== 0;
 	}
 
+	async function copyItemId() {
+		try {
+			await navigator.clipboard.writeText(itemId);
+			copied = true;
+			window.setTimeout(() => {
+				copied = false;
+			}, 1500);
+		} catch {
+			copied = false;
+		}
+	}
+
 	$effect(() => {
 		void itemId;
 		selectedRevisionId = '';
+		copied = false;
 		debug = null;
+		content = null;
 		revision = null;
 	});
 
@@ -51,12 +68,17 @@
 		loading = true;
 		error = '';
 		debug = null;
+		content = null;
 		revision = null;
-		void loadContentItemDebug(itemId, connections.api)
-			.then((value) => {
+		void Promise.all([
+			loadContentItemDebug(itemId, connections.api),
+			loadContentByItemId(itemId, connections.api)
+		])
+			.then(([debugValue, contentValue]) => {
 				if (currentRequestId !== requestId) return;
-				debug = value;
-				selectedRevisionId = String(value.latestRevisionId ?? value.revisions[0]?.revisionId ?? '');
+				debug = debugValue;
+				content = contentValue;
+				selectedRevisionId = String(debugValue.latestRevisionId ?? debugValue.revisions[0]?.revisionId ?? '');
 			})
 			.catch((value) => {
 				if (currentRequestId !== requestId) return;
@@ -102,14 +124,28 @@
 		class="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-dashed border-surface-200-800 p-6"
 	>
 		<div>
-			<p class="text-sm font-medium text-surface-700-300">Content debugger</p>
-			<h1 class="mt-1 text-2xl font-semibold">Debug item</h1>
-			<p class="mt-2 text-sm break-all text-surface-700-300">{itemId}</p>
+			<h1 class="text-2xl font-semibold">{content?.title || 'Loading item…'}</h1>
 		</div>
-		<a class="variant-outline btn" href={resolve(`/item_id/${itemId}`)}>Back to item</a>
 	</header>
 
-	{#if debug}<ContentTabs {itemId} {canEdit} active="debug" />{/if}
+	{#if debug}
+		<div class="space-y-3 px-6">
+			<ContentTabs {itemId} {canEdit} active="debug" />
+			<div class="flex flex-wrap items-center gap-2">
+				<div class="inline-flex max-w-full rounded-full border border-surface-200-800 bg-surface-100-900 px-3 py-1 text-xs font-mono break-all text-surface-700-300">
+					{itemId}
+				</div>
+				<button
+					type="button"
+					class="variant-outline btn btn-sm"
+					onclick={copyItemId}
+					aria-label="Copy item ID"
+				>
+					{copied ? 'Copied' : 'Copy'}
+				</button>
+			</div>
+		</div>
+	{/if}
 
 	{#if loading}
 		<div class="card px-4 py-3 text-sm">Loading debug data…</div>

@@ -80,9 +80,9 @@ Important routes:
 - `src/routes/forum-admin/+page.svelte` — list forums from `pallet-account-content` and link to forum creation
 - `src/routes/create-forum/+page.svelte` — create a top-level forum item
 - `src/routes/item_id/+page.svelte` — item lookup form
-- `src/routes/item_id/[item_id]/+page.svelte` — generic content viewer for any item
-- `src/routes/item_id/[item_id]/edit/+page.svelte` — revision editor for editable items
-- `src/routes/item_id/[item_id]/debug/+page.svelte` — low-level inspection of chain/indexed/IPFS state
+- `src/routes/item_id/[item_id]/+page.svelte` — generic content viewer for any item; the loaded item title is used as the page heading
+- `src/routes/item_id/[item_id]/edit/+page.svelte` — revision editor for editable items; the loaded item title is used as the page heading
+- `src/routes/item_id/[item_id]/debug/+page.svelte` — low-level inspection of chain/indexed/IPFS state; the loaded item title is used as the page heading and the item ID is shown under the tabs rather than in the header
 - `src/routes/status/ipfs/+page.svelte` — IPFS daemon status page
 
 ### 2. Stateful client services

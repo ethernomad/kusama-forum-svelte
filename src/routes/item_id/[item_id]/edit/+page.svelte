@@ -127,14 +127,14 @@
 <div class="max-w-4xl space-y-6">
 	<header class="card border-dashed p-6">
 		<div>
-			<p class="text-sm font-medium text-surface-700-300">Content editor</p>
-			<h1 class="mt-1 text-2xl font-semibold">Edit content</h1>
-			<p class="mt-2 text-sm break-all text-surface-700-300">{itemId}</p>
+			<h1 class="text-2xl font-semibold">{content?.title || 'Loading item…'}</h1>
 		</div>
 	</header>
 
 	{#if content}
-		<ContentTabs {itemId} {canEdit} active="edit" />
+		<div class="px-6">
+			<ContentTabs {itemId} {canEdit} active="edit" />
+		</div>
 	{/if}
 
 	{#if error}

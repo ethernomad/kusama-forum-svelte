@@ -296,28 +296,29 @@
 <div class="max-w-4xl space-y-6">
 	<header class="flex flex-wrap items-start justify-between gap-4 card border-dashed p-6">
 		<div>
-			<p class="text-sm font-medium text-surface-700-300">Content viewer</p>
-			<h1 class="mt-1 text-2xl font-semibold">{contentTypeLabel(content)}</h1>
+			<h1 class="text-2xl font-semibold">{content?.title || 'Loading item…'}</h1>
 		</div>
 	</header>
 
 	{#if content}
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			<ContentTabs {itemId} {canEdit} active="view" />
-			{#if revisions.length > 1}
-				<label class="flex items-center gap-2 text-xs text-surface-700-300">
-					Revision
-					<select class="select w-44" bind:value={selectedRevisionId} aria-label="Select revision">
-						{#each revisions as revision (revision.revisionId)}
-							<option value={String(revision.revisionId)}>
-								Revision {revision.revisionId}{revision.revisionId === content.latestRevisionId
-									? ' (latest)'
-									: ''}
-							</option>
-						{/each}
-					</select>
-				</label>
-			{/if}
+		<div class="px-6">
+			<div class="flex flex-wrap items-center justify-between gap-3">
+				<ContentTabs {itemId} {canEdit} active="view" />
+				{#if revisions.length > 1}
+					<label class="flex items-center gap-2 text-xs text-surface-700-300">
+						Revision
+						<select class="select w-44" bind:value={selectedRevisionId} aria-label="Select revision">
+							{#each revisions as revision (revision.revisionId)}
+								<option value={String(revision.revisionId)}>
+									Revision {revision.revisionId}{revision.revisionId === content.latestRevisionId
+										? ' (latest)'
+										: ''}
+								</option>
+							{/each}
+						</select>
+					</label>
+				{/if}
+			</div>
 		</div>
 	{/if}
 
@@ -338,7 +339,6 @@
 				</p>
 			</div>
 
-			<h2 class="text-2xl font-semibold">{content.title || 'Untitled content'}</h2>
 
 			<div class="mt-3 flex flex-wrap items-center gap-2 text-sm text-surface-700-300">
 				<span>By</span>
