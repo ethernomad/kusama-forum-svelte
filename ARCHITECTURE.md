@@ -121,14 +121,16 @@ The UI talks to protocol services:
 
 App startup is centralized in `src/routes/+layout.svelte`.
 
-On mount it does three things:
+On mount it does four things:
 
 1. `loadInjectedAccounts()`
 2. `startAppConnections()`
 3. `startAccountBalanceWatcher()`
+4. `startAccountProfileWatcher()`
 
 On unmount it stops:
 
+- account-profile watching
 - balance watching
 - chain/indexer/IPFS connection maintenance
 - indexer subscriptions
@@ -145,6 +147,8 @@ On unmount it stops:
 - restores the last selected account from local storage (`kusama-forum.active-account`)
 
 The account picker in `src/lib/components/AccountSelector.svelte` also exposes a collapsible Virto passkey dropdown where the user can configure the Virto server/provider URLs, register with WebAuthn, sign in with a passkey, and disconnect that session.
+
+A lightweight profile watcher in `accounts.svelte.ts` also resolves each visible account's on-chain profile item and, when present, loads the profile title so account-facing UI can prefer the forum profile name over the wallet-local account label while still keeping the short address available where needed.
 
 ### Connection bootstrap
 

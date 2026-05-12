@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { formatShortAddress, injectedAccounts } from '$lib/services/accounts.svelte';
+	import { formatAccountDisplayWithAddress, injectedAccounts } from '$lib/services/accounts.svelte';
 	import { connections } from '$lib/services/connections.svelte';
 	import { saveForum, type ForumDraft } from '$lib/services/content';
 	import { PUBLISH_NOTICE_PREPARING } from '$lib/services/publish-notices';
@@ -166,11 +166,7 @@
 					</p>
 				</div>
 				<div class="space-y-1 text-xs text-surface-700-300">
-					<p>
-						Author: {activeAccount
-							? formatShortAddress(activeAccount.address)
-							: 'No account selected'}
-					</p>
+					<p>Author: {formatAccountDisplayWithAddress(activeAccount)}</p>
 					<p>
 						{connections.ipfsConnected
 							? 'Ready to publish through the local IPFS daemon.'

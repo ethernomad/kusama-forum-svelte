@@ -2,6 +2,7 @@
 	import { Menu } from '@skeletonlabs/skeleton-svelte';
 	import {
 		formatAccountLabel,
+		formatAccountSecondaryLabel,
 		formatShortAddress,
 		injectedAccounts,
 		isVirtoAccount,
@@ -28,6 +29,7 @@
 	const virtoAccounts = $derived(
 		injectedAccounts.accounts.filter((account) => account.provider === 'virto')
 	);
+	const activeAccountSecondaryLabel = $derived(formatAccountSecondaryLabel(activeAccount));
 
 	function syncVirtoConfig(field: 'serverUrl' | 'providerUrl' | 'displayName', value: string) {
 		configureVirto({ [field]: value });
@@ -75,8 +77,12 @@
 					</div>
 					<p class="truncate text-xs text-surface-700-300">
 						{#if activeAccount}
-							{formatShortAddress(activeAccount.address)}
-							• {isVirtoAccount(activeAccount) ? 'Virto passkey' : 'Extension'}
+							{#if activeAccountSecondaryLabel}
+								{activeAccountSecondaryLabel} • {formatShortAddress(activeAccount.address)}
+							{:else}
+								{formatShortAddress(activeAccount.address)}
+								• {isVirtoAccount(activeAccount) ? 'Virto passkey' : 'Extension'}
+							{/if}
 						{:else}
 							{injectedAccounts.status}
 						{/if}
@@ -112,7 +118,14 @@
 								</span>
 								<div class="min-w-0 flex-1">
 									<div class="flex items-center justify-between gap-3">
-										<p class="truncate font-medium">{formatAccountLabel(account)}</p>
+										<div class="min-w-0 flex-1">
+											<p class="truncate font-medium">{formatAccountLabel(account)}</p>
+											{#if formatAccountSecondaryLabel(account)}
+												<p class="truncate text-xs text-surface-700-300">
+													Wallet: {formatAccountSecondaryLabel(account)}
+												</p>
+											{/if}
+										</div>
 										<span class="shrink-0 text-xs font-medium text-surface-700-300">
 											{getAccountBalanceLabel(account.address)}
 										</span>
@@ -146,7 +159,14 @@
 								</span>
 								<div class="min-w-0 flex-1">
 									<div class="flex items-center justify-between gap-3">
-										<p class="truncate font-medium">{formatAccountLabel(account)}</p>
+										<div class="min-w-0 flex-1">
+											<p class="truncate font-medium">{formatAccountLabel(account)}</p>
+											{#if formatAccountSecondaryLabel(account)}
+												<p class="truncate text-xs text-surface-700-300">
+													Wallet: {formatAccountSecondaryLabel(account)}
+												</p>
+											{/if}
+										</div>
 										<span class="shrink-0 text-xs font-medium text-surface-700-300">
 											{getAccountBalanceLabel(account.address)}
 										</span>

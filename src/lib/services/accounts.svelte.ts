@@ -1,5 +1,8 @@
+import type { ApiPromise } from '@polkadot/api';
 import { cryptoWaitReady, decodeAddress } from '@polkadot/util-crypto';
 
+import { connections } from './connections.svelte';
+import { loadProfile } from './profile';
 import { getVirtoSessionAccount, restoreVirtoSession } from './virto-connect.svelte';
 
 const APP_NAME = 'Kusama Forum';
@@ -19,12 +22,19 @@ export type InjectedAccount = {
 	};
 };
 
+type AccountProfileSummary = {
+	loading: boolean;
+	name: string | null;
+	error: string | null;
+};
+
 type AccountsState = {
 	status: string;
 	extensionEnabled: boolean;
 	accounts: InjectedAccount[];
 	activeAddress: string;
 	activeAccount: InjectedAccount | null;
+	profileByAddress: Record<string, AccountProfileSummary>;
 };
 
 export const injectedAccounts = $state<AccountsState>({
@@ -32,7 +42,8 @@ export const injectedAccounts = $state<AccountsState>({
 	extensionEnabled: false,
 	accounts: [],
 	activeAddress: '',
-	activeAccount: null
+	activeAccount: null,
+	profileByAddress: {}
 });
 
 function accountStorageKey(account: InjectedAccount) {
@@ -73,6 +84,44 @@ function syncActiveAccount() {
 function combineAccounts(extensionAccounts: InjectedAccount[]) {
 	const virtoAccount = getVirtoSessionAccount();
 	return [...extensionAccounts, ...(virtoAccount ? [virtoAccount] : [])];
+}
+
+function normalizeAddressKey(address: string) {
+	return address.trim();
+}
+
+function trimUnknownProfileEntries(addresses: string[]) {
+	const keep = new Set(addresses.map(normalizeAddressKey));
+	for (const address of Object.keys(injectedAccounts.profileByAddress)) {
+		if (!keep.has(address)) delete injectedAccounts.profileByAddress[address];
+	}
+}
+
+function ensureProfileSummary(address: string) {
+	const key = normalizeAddressKey(address);
+	injectedAccounts.profileByAddress[key] ??= { loading: true, name: null, error: null };
+	return injectedAccounts.profileByAddress[key];
+}
+
+async function fetchAccountProfileName(api: ApiPromise, address: string) {
+	const profileSummary = ensureProfileSummary(address);
+	profileSummary.loading = true;
+	profileSummary.error = null;
+
+	try {
+		const profile = await loadProfile(api, address);
+		injectedAccounts.profileByAddress[normalizeAddressKey(address)] = {
+			loading: false,
+			name: profile.exists ? (profile.draft.name.trim() || null) : null,
+			error: null
+		};
+	} catch (error) {
+		injectedAccounts.profileByAddress[normalizeAddressKey(address)] = {
+			loading: false,
+			name: null,
+			error: error instanceof Error ? error.message : String(error)
+		};
+	}
 }
 
 function summarizeStatus(
@@ -157,15 +206,111 @@ export function isVirtoAccount(account: InjectedAccount | null | undefined): boo
 	return account?.provider === 'virto';
 }
 
+export function getAccountProfileName(address: string | null | undefined) {
+	if (!address) return null;
+	return injectedAccounts.profileByAddress[normalizeAddressKey(address)]?.name ?? null;
+}
+
 export function formatAccountLabel(account: InjectedAccount | null) {
 	if (!account) return 'Select account';
+	const profileName = getAccountProfileName(account.address)?.trim();
+	if (profileName) return profileName;
 	if (account.provider === 'virto') {
 		return account.meta.name?.trim() || account.meta.username?.trim() || 'Virto passkey';
 	}
 	return account.meta.name?.trim() || 'Unnamed account';
 }
 
+export function formatAccountSecondaryLabel(account: InjectedAccount | null) {
+	if (!account) return '';
+	const profileName = getAccountProfileName(account.address)?.trim();
+	if (!profileName) return '';
+	const fallbackLabel =
+		account.provider === 'virto'
+			? (account.meta.name?.trim() || account.meta.username?.trim() || '')
+			: (account.meta.name?.trim() || '');
+	return fallbackLabel && fallbackLabel !== profileName ? fallbackLabel : '';
+}
+
+let profileWatcherStarted = false;
+let stopProfileWatcher: (() => void) | null = null;
+
+export function startAccountProfileWatcher() {
+	if (profileWatcherStarted) return stopProfileWatcher ?? (() => {});
+	profileWatcherStarted = true;
+
+	let active = true;
+	let reconcileInterval: ReturnType<typeof setInterval> | undefined;
+	let lastApi: ApiPromise | null = null;
+	let watchedAddresses = new Set<string>();
+	let pendingFetches = new Set<string>();
+
+	const reconcile = async () => {
+		if (!active) return;
+		const api = connections.api;
+		const addresses = injectedAccounts.accounts
+			.map((account) => normalizeAddressKey(account.address))
+			.filter(Boolean);
+		trimUnknownProfileEntries(addresses);
+
+		if (!api || addresses.length === 0) {
+			watchedAddresses = new Set(addresses);
+			return;
+		}
+
+		const apiChanged = api !== lastApi;
+		if (apiChanged) {
+			lastApi = api;
+			pendingFetches = new Set(addresses);
+		}
+
+		const previousWatched = watchedAddresses;
+		watchedAddresses = new Set(addresses);
+
+		for (const address of addresses) {
+			const existing = injectedAccounts.profileByAddress[address];
+			const needsFetch =
+				apiChanged ||
+				pendingFetches.has(address) ||
+				!previousWatched.has(address) ||
+				!existing ||
+				existing.loading;
+			if (!existing) ensureProfileSummary(address);
+			if (!needsFetch) continue;
+			pendingFetches.delete(address);
+			void fetchAccountProfileName(api, address);
+		}
+	};
+
+	reconcileInterval = setInterval(() => {
+		void reconcile();
+	}, 1_000);
+	void reconcile();
+
+	stopProfileWatcher = () => {
+		active = false;
+		if (reconcileInterval) clearInterval(reconcileInterval);
+		profileWatcherStarted = false;
+		stopProfileWatcher = null;
+	};
+
+	return stopProfileWatcher;
+}
+
 export function formatShortAddress(address: string) {
 	if (address.length <= 12) return address;
 	return `${address.slice(0, 6)}…${address.slice(-6)}`;
+}
+
+export function formatAccountDisplayName(account: InjectedAccount | null) {
+	if (!account) return 'No account selected';
+	return formatAccountLabel(account);
+}
+
+export function formatAccountDisplayWithAddress(account: InjectedAccount | null) {
+	if (!account) return 'No account selected';
+	const secondaryLabel = formatAccountSecondaryLabel(account);
+	return secondaryLabel
+		? `${formatAccountLabel(account)} (${formatShortAddress(account.address)})`
+		: formatAccountLabel(account);
 }

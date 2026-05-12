@@ -3,7 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import ContentTabs from '$lib/components/ContentTabs.svelte';
-	import { formatShortAddress, injectedAccounts } from '$lib/services/accounts.svelte';
+	import { formatAccountDisplayWithAddress, injectedAccounts } from '$lib/services/accounts.svelte';
 	import {
 		canEditContent,
 		canRetractContent,
@@ -286,9 +286,7 @@
 				</div>
 
 				<p class="text-xs text-surface-700-300">
-					Author: {activeAccount
-						? formatShortAddress(activeAccount.address)
-						: 'No account selected'} · {connections.ipfsConnected
+					Author: {formatAccountDisplayWithAddress(activeAccount)} · {connections.ipfsConnected
 						? 'Ready to publish through the local IPFS daemon.'
 						: 'Connect to the local IPFS daemon before publishing.'}
 				</p>

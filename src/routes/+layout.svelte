@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import './layout.css';
 	import StatusSidebar from '$lib/components/StatusSidebar.svelte';
-	import { loadInjectedAccounts } from '$lib/services/accounts.svelte';
+	import { loadInjectedAccounts, startAccountProfileWatcher } from '$lib/services/accounts.svelte';
 	import { startAccountBalanceWatcher } from '$lib/services/balances.svelte';
 	import { startAppConnections } from '$lib/services/connections.svelte';
 	import { stopIndexer } from '$lib/services/indexer.svelte';
@@ -13,7 +13,9 @@
 		loadInjectedAccounts();
 		const stopConnections = startAppConnections();
 		const stopBalanceWatcher = startAccountBalanceWatcher();
+		const stopProfileWatcher = startAccountProfileWatcher();
 		return () => {
+			stopProfileWatcher();
 			stopBalanceWatcher();
 			stopConnections();
 			stopIndexer();
