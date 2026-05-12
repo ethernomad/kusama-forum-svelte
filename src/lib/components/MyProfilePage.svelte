@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { injectedAccounts } from '$lib/services/accounts.svelte';
 	import { connections } from '$lib/services/connections.svelte';
 	import {
@@ -156,10 +158,12 @@
 
 		savingProfile = true;
 		try {
+			const existingItemIdHex = profile?.itemIdHex ?? null;
+			const wasExistingProfile = profile?.exists ?? false;
 			profileNotice = PUBLISH_NOTICE_PREPARING;
 			const prepared = await prepareProfileSave({
 				draft,
-				existingItemIdHex: profile?.itemIdHex ?? null,
+				existingItemIdHex,
 				existingImagePayload,
 				selectedImageFile
 			});
@@ -168,14 +172,18 @@
 				api: connections.api,
 				account: activeAccount,
 				draft,
-				existingItemIdHex: profile?.itemIdHex ?? null,
+				existingItemIdHex,
 				existingImagePayload,
 				selectedImageFile,
 				prepared
 			});
 			applyProfile(saved);
+			if (!wasExistingProfile && saved.itemIdHex) {
+				await goto(resolve(`/item_id/${saved.itemIdHex}`));
+				return;
+			}
 			profileNotice =
-				saved.itemIdHex === profile?.itemIdHex
+				saved.itemIdHex === existingItemIdHex
 					? 'Profile revision published successfully.'
 					: 'Profile created successfully.';
 		} catch (error) {

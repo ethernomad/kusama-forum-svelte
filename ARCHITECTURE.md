@@ -75,7 +75,7 @@ Important routes:
 
 - `src/routes/+layout.svelte` — bootstraps global connections/watchers and renders the sidebar
 - `src/routes/+page.svelte` — home page, currently the profile page
-- `src/routes/my-profile/+page.svelte` — profile editor/view
+- `src/routes/my-profile/+page.svelte` — profile entry route; it redirects accounts with an existing profile to `/item_id/[item_id]` and otherwise shows the profile creation form
 - `src/routes/trusted-accounts/+page.svelte` — trusted-account manager backed by trusted-accounts chain storage and trust/untrust extrinsics
 - `src/routes/forum-admin/+page.svelte` — list forums from `pallet-account-content` and link to forum creation
 - `src/routes/create-forum/+page.svelte` — create a top-level forum item
@@ -435,6 +435,11 @@ There is no separate ACK queue or custom local pinner protocol anymore.
 
 Implemented mainly in `src/lib/services/profile.ts` and `MyProfilePage.svelte`.
 
+The `/my-profile` route behaves like a profile entrypoint rather than a permanent editor page:
+
+- if the active account already has an `accountProfile` mapping, the route redirects to `/item_id/[item_id]` for that profile item
+- if no profile exists yet, the route shows the profile creation form
+
 Flow:
 
 1. user edits profile fields and optional avatar
@@ -447,6 +452,7 @@ Flow:
 7. if profile does not exist:
    - derive new item ID from nonce
    - batch `content.publishItem(...)` with `accountProfile.setProfile(itemId)` using `utility.batchAll`
+   - redirect the user to `/item_id/[item_id]` for the newly created profile after the first successful save
 
 The profile flow is special because the account profile pallet maps an account to a profile item ID.
 
