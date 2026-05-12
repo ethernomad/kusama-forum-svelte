@@ -17,6 +17,7 @@ export type TrustedAccountSummary = {
 	address: string;
 	displayName: string;
 	profileItemIdHex: string | null;
+	imagePreviewDataUrl: string | null;
 };
 
 function trustedAccountsQuery(api: ApiPromise) {
@@ -172,13 +173,15 @@ export async function loadTrustedAccountSummary(
 		return {
 			address: normalizedAddress,
 			displayName: profile.draft.name.trim() || shortAddress(normalizedAddress),
-			profileItemIdHex: profile.itemIdHex
+			profileItemIdHex: profile.itemIdHex,
+			imagePreviewDataUrl: profile.imagePreviewDataUrl
 		};
 	} catch {
 		return {
 			address: normalizedAddress,
 			displayName: shortAddress(normalizedAddress),
-			profileItemIdHex: null
+			profileItemIdHex: null,
+			imagePreviewDataUrl: null
 		};
 	}
 }
