@@ -489,8 +489,9 @@ The forum flow now uses a similar batched-create pattern, except its follow-up c
 - content type is forum post
 - no parents
 - links contain the category item ID
-- flags mark item revisionable
+- flags mark item revisionable and retractable
 - submits `content.publishItem(...)`
+- later retraction is available from the edit route for any retractable item, which submits `content.retractItem(itemId)`; forum posts redirect back to the category page after success while other items fall back to their item page
 
 ### 5. Create comment or reply
 
@@ -499,7 +500,7 @@ The forum flow now uses a similar batched-create pattern, except its follow-up c
 - content type is comment
 - parent is the commented item
 - no links
-- revisionable
+- revisionable and retractable
 - submits `content.publishItem(...)`
 
 Replies are simply comments whose parent is another comment item.

@@ -5,9 +5,11 @@
 	import ContentTabs from '$lib/components/ContentTabs.svelte';
 	import { formatShortAddress, injectedAccounts } from '$lib/services/accounts.svelte';
 	import {
+		accountAddressToHex,
 		canEditContent,
 		loadContentByItemId,
 		publishContentRevision,
+		retractItem,
 		type ContentRevisionDraft,
 		type LoadedContent
 	} from '$lib/services/content';
@@ -16,6 +18,7 @@
 
 	let loading = $state(false);
 	let saving = $state(false);
+	let retracting = $state(false);
 	let error = $state('');
 	let notice = $state('');
 	let content: LoadedContent | null = $state(null);
@@ -24,10 +27,21 @@
 	let selectedImagePreview: string | null = $state(null);
 	let removeImage = $state(false);
 	let loadRequest = 0;
+	const RETRACTABLE_ITEM_FLAGS = 0x02;
 
 	const itemId = $derived(page.params.item_id);
 	const activeAccount = $derived(injectedAccounts.activeAccount);
 	const canEdit = $derived(canEditContent(content, activeAccount));
+	const canRetract = $derived.by(() => {
+		const value = content;
+		return (
+			!!value?.ownerHex &&
+			!!activeAccount &&
+			value.ownerHex === accountAddressToHex(activeAccount.address) &&
+			value.flags != null &&
+			(value.flags & RETRACTABLE_ITEM_FLAGS) !== 0
+		);
+	});
 	const categoryItemId = $derived.by(() => {
 		const value = content;
 		return value?.contentType === 'forumPost' ? (value.latestLinks[0] ?? '') : '';
@@ -85,6 +99,34 @@
 		selectedImageFile = null;
 		selectedImagePreview = null;
 		removeImage = true;
+	}
+
+	async function retractPost() {
+		error = '';
+		notice = '';
+		if (!content || !canRetract || !activeAccount) {
+			error = 'The active account cannot retract this item.';
+			return;
+		}
+		if (!connections.api) {
+			error = 'Connect to the chain before retracting this item.';
+			return;
+		}
+
+		retracting = true;
+		try {
+			await retractItem(connections.api, activeAccount, content.itemIdHex);
+			notice = 'Item retracted. Redirecting...';
+			await goto(
+				categoryItemId
+					? resolve(`/item_id/${encodeURIComponent(categoryItemId)}`)
+					: resolve(`/item_id/${encodeURIComponent(content.itemIdHex)}`)
+			);
+		} catch (value) {
+			error = value instanceof Error ? value.message : String(value);
+		} finally {
+			retracting = false;
+		}
 	}
 
 	async function submitRevision() {
@@ -237,10 +279,20 @@
 					<button
 						class="variant-filled-primary btn"
 						onclick={submitRevision}
-						disabled={!activeAccount || !connections.api || !connections.ipfsConnected || saving}
+						disabled={!activeAccount || !connections.api || !connections.ipfsConnected || saving || retracting}
 					>
 						{saving ? 'Publishing...' : 'Publish new revision'}
 					</button>
+					{#if canRetract}
+						<button
+							class="variant-outline btn"
+							type="button"
+							onclick={retractPost}
+							disabled={!activeAccount || !connections.api || saving || retracting}
+						>
+							{retracting ? 'Retracting...' : 'Retract item'}
+						</button>
+					{/if}
 				</div>
 
 				<p class="text-xs text-surface-700-300">

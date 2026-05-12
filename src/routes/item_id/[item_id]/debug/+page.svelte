@@ -40,6 +40,10 @@
 	}
 
 	async function copyItemId() {
+		if (!itemId) {
+			copied = false;
+			return;
+		}
 		try {
 			await navigator.clipboard.writeText(itemId);
 			copied = true;
