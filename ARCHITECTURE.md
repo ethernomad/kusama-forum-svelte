@@ -144,7 +144,7 @@ On unmount it stops:
 - merges extension accounts with the optional Virto session account into one picker
 - restores the last selected account from local storage (`kusama-forum.active-account`)
 
-The account picker in `src/lib/components/AccountSelector.svelte` also exposes a Virto passkey panel where the user can configure the Virto server/provider URLs, register with WebAuthn, sign in with a passkey, and disconnect that session.
+The account picker in `src/lib/components/AccountSelector.svelte` also exposes a collapsible Virto passkey dropdown where the user can configure the Virto server/provider URLs, register with WebAuthn, sign in with a passkey, and disconnect that session.
 
 ### Connection bootstrap
 

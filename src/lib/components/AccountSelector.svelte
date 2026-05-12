@@ -175,116 +175,121 @@
 		</Menu>
 	</div>
 
-	<div class="rounded-xl border border-surface-200-800 p-3">
-		<div class="flex items-start justify-between gap-3">
-			<div>
-				<p class="text-sm font-medium">Virto passkey</p>
-				<p class="mt-1 text-xs text-surface-700-300">
-					Optional onboarding and signing path using passkeys instead of a browser wallet.
-				</p>
-			</div>
+	<details class="rounded-xl border border-surface-200-800 p-3 group">
+		<summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium marker:content-none">
+			<span>Virto passkey</span>
+			<span aria-hidden="true" class="text-xs text-surface-700-300 transition-transform group-open:rotate-180">▾</span>
+		</summary>
+
+		<div class="mt-3 border-t border-surface-200-800 pt-3">
+			<p class="text-xs text-surface-700-300">
+				Optional onboarding and signing path using passkeys instead of a browser wallet.
+			</p>
+
 			{#if virtoState.connected}
-				<span
-					class="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-200"
-				>
-					Connected
-				</span>
+				<div class="mt-3">
+					<span
+						class="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-200"
+					>
+						Connected
+					</span>
+				</div>
 			{/if}
-		</div>
 
-		<div class="mt-3 grid gap-3">
-			<label class="grid gap-1 text-xs">
-				<span class="text-surface-700-300">Virto server URL</span>
-				<input
-					class="input"
-					value={virtoState.serverUrl}
-					oninput={(event) =>
-						syncVirtoConfig('serverUrl', (event.currentTarget as HTMLInputElement).value)}
-					placeholder="https://vc.connect-test.xyz:5000/api"
-				/>
-			</label>
-
-			<label class="grid gap-1 text-xs">
-				<span class="text-surface-700-300">Blockchain provider URL</span>
-				<input
-					class="input"
-					value={virtoState.providerUrl}
-					oninput={(event) =>
-						syncVirtoConfig('providerUrl', (event.currentTarget as HTMLInputElement).value)}
-					placeholder={connections.endpoint}
-				/>
-			</label>
-
-			<div class="grid gap-3 sm:grid-cols-2">
+			<div class="mt-3 grid gap-3">
 				<label class="grid gap-1 text-xs">
-					<span class="text-surface-700-300">Display name</span>
+					<span class="text-surface-700-300">Virto server URL</span>
 					<input
 						class="input"
-						bind:value={virtoName}
-						onchange={() => syncVirtoConfig('displayName', virtoName)}
-						placeholder="Forum profile name"
+						value={virtoState.serverUrl}
+						oninput={(event) =>
+							syncVirtoConfig('serverUrl', (event.currentTarget as HTMLInputElement).value)}
+						placeholder="https://vc.connect-test.xyz:5000/api"
 					/>
 				</label>
-				<label class="grid gap-1 text-xs">
-					<span class="text-surface-700-300">Virto username</span>
-					<input class="input" bind:value={virtoUsername} placeholder="passkey username" />
-				</label>
-			</div>
-		</div>
 
-		<div class="mt-3 flex flex-wrap gap-2">
-			<button
-				type="button"
-				class="variant-filled-primary btn"
-				disabled={virtoState.loading ||
-					!virtoUsername.trim() ||
-					!virtoState.serverUrl.trim() ||
-					!virtoState.providerUrl.trim()}
-				onclick={() => void handleVirtoLogin()}
-			>
-				{virtoState.loading && virtoState.username.trim() === virtoUsername.trim()
-					? 'Signing in…'
-					: 'Sign in with passkey'}
-			</button>
-			<button
-				type="button"
-				class="btn"
-				disabled={virtoState.loading ||
-					!virtoUsername.trim() ||
-					!virtoState.serverUrl.trim() ||
-					!virtoState.providerUrl.trim()}
-				onclick={() => void handleVirtoRegister()}
-			>
-				Register passkey
-			</button>
-			{#if virtoState.connected}
-				<button type="button" class="btn" onclick={() => void handleVirtoDisconnect()}>
-					Disconnect
+				<label class="grid gap-1 text-xs">
+					<span class="text-surface-700-300">Blockchain provider URL</span>
+					<input
+						class="input"
+						value={virtoState.providerUrl}
+						oninput={(event) =>
+							syncVirtoConfig('providerUrl', (event.currentTarget as HTMLInputElement).value)}
+						placeholder={connections.endpoint}
+					/>
+				</label>
+
+				<div class="grid gap-3 sm:grid-cols-2">
+					<label class="grid gap-1 text-xs">
+						<span class="text-surface-700-300">Display name</span>
+						<input
+							class="input"
+							bind:value={virtoName}
+							onchange={() => syncVirtoConfig('displayName', virtoName)}
+							placeholder="Forum profile name"
+						/>
+					</label>
+					<label class="grid gap-1 text-xs">
+						<span class="text-surface-700-300">Virto username</span>
+						<input class="input" bind:value={virtoUsername} placeholder="passkey username" />
+					</label>
+				</div>
+			</div>
+
+			<div class="mt-3 flex flex-wrap gap-2">
+				<button
+					type="button"
+					class="variant-filled-primary btn"
+					disabled={virtoState.loading ||
+						!virtoUsername.trim() ||
+						!virtoState.serverUrl.trim() ||
+						!virtoState.providerUrl.trim()}
+					onclick={() => void handleVirtoLogin()}
+				>
+					{virtoState.loading && virtoState.username.trim() === virtoUsername.trim()
+						? 'Signing in…'
+						: 'Sign in with passkey'}
 				</button>
+				<button
+					type="button"
+					class="btn"
+					disabled={virtoState.loading ||
+						!virtoUsername.trim() ||
+						!virtoState.serverUrl.trim() ||
+						!virtoState.providerUrl.trim()}
+					onclick={() => void handleVirtoRegister()}
+				>
+					Register passkey
+				</button>
+				{#if virtoState.connected}
+					<button type="button" class="btn" onclick={() => void handleVirtoDisconnect()}>
+						Disconnect
+					</button>
+				{/if}
+			</div>
+
+			{#if virtoState.connected}
+				<p class="mt-3 text-xs text-surface-700-300">
+					Active Virto user: {virtoState.username} • {formatShortAddress(virtoState.address)}
+				</p>
+			{/if}
+			{#if virtoState.providerStatus}
+				<p class="mt-2 text-xs text-surface-700-300">Provider: {virtoState.providerStatus}</p>
+			{/if}
+			{#if virtoState.lastTransactionStatus}
+				<p class="mt-2 text-xs text-surface-700-300">
+					Last Virto transaction: {virtoState.lastTransactionSummary ||
+						virtoState.lastTransactionStatus}
+				</p>
+			{/if}
+			{#if virtoState.error}
+				<p class="mt-2 text-sm text-red-300">{virtoState.error}</p>
+			{:else}
+				<p class="mt-2 text-xs text-surface-700-300">
+					Use the same chain endpoint as this dapp unless your Virto backend expects a different
+					network.
+				</p>
 			{/if}
 		</div>
-
-		{#if virtoState.connected}
-			<p class="mt-3 text-xs text-surface-700-300">
-				Active Virto user: {virtoState.username} • {formatShortAddress(virtoState.address)}
-			</p>
-		{/if}
-		{#if virtoState.providerStatus}
-			<p class="mt-2 text-xs text-surface-700-300">Provider: {virtoState.providerStatus}</p>
-		{/if}
-		{#if virtoState.lastTransactionStatus}
-			<p class="mt-2 text-xs text-surface-700-300">
-				Last Virto transaction: {virtoState.lastTransactionSummary ||
-					virtoState.lastTransactionStatus}
-			</p>
-		{/if}
-		{#if virtoState.error}
-			<p class="mt-2 text-sm text-red-300">{virtoState.error}</p>
-		{:else}
-			<p class="mt-2 text-xs text-surface-700-300">
-				Use the same chain endpoint as this dapp unless your Virto backend expects a different
-				network.
-			</p>
-		{/if}
-	</div>
+	</details>
 </section>
